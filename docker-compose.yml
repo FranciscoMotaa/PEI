@@ -1,0 +1,155 @@
+version: "3.8"
+
+services:
+
+  # ── Broker MQTT com TLS ──────────────────────────────────
+  broker:
+    image: eclipse-mosquitto:2.0
+    container_name: iot-broker
+    ports:
+      - "8883:8883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./certs:/mosquitto/certs
+    networks:
+      iot-net:
+        ipv4_address: 172.20.0.2
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-u", "admin", "-P", "admin123", "--cafile", "/mosquitto/certs/ca.crt", "-p", "8883"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Dispositivo IoT 1 — Telemetria Periódica ─────────────
+  iot-device-1:
+    build: ./devices/device1
+    container_name: iot-device-1
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - ./certs:/app/certs
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - BROKER_HOST=broker
+      - BROKER_PORT=8883
+      - DEVICE_ID=device1
+      - DEVICE_TYPE=telemetry
+    networks:
+      iot-net:
+        ipv4_address: 172.20.0.10   # IP fixo → identificação sem decifrar
+
+  # ── Dispositivo IoT 2 — Event-Driven ────────────────────
+  iot-device-2:
+    build: ./devices/device2
+    container_name: iot-device-2
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - ./certs:/app/certs
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - BROKER_HOST=broker
+      - BROKER_PORT=8883
+      - DEVICE_ID=device2
+      - DEVICE_TYPE=event_driven
+    networks:
+      iot-net:
+        ipv4_address: 172.20.0.11   # IP fixo → identificação sem decifrar
+
+  # ── Dispositivo IoT 3 — Firmware Update ─────────────────
+  iot-device-3:
+    build: ./devices/device3
+    container_name: iot-device-3
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - ./certs:/app/certs
+    environment:
+      - BROKER_HOST=broker
+      - BROKER_PORT=8883
+      - DEVICE_ID=device3
+      - DEVICE_TYPE=firmware
+    networks:
+      iot-net:
+        ipv4_address: 172.20.0.12   # IP fixo → identificação sem decifrar
+
+  # ── Captura de Tráfego (observador passivo) ──────────────
+  # Captura pacotes na rede sem decifrar o conteúdo TLS.
+  # Extrai apenas metadata da camada de transporte:
+  #   frame.time_epoch — timestamp de chegada
+  #   frame.len        — tamanho do pacote IP (TLS record size + headers)
+  #   ip.src / ip.dst  — endereços IP (visíveis nos headers)
+  capture:
+    image: nicolaka/netshoot
+    container_name: iot-capture
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    network_mode: "service:broker"
+    volumes:
+      - ./captures:/captures
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "tshark -i eth0 -f 'tcp port 8883' -T fields -e frame.time_epoch -e frame.len -e ip.src -e ip.dst -E separator=, -l > /captures/flow_fields.csv &
+       tshark -i eth0 -f 'tcp port 8883' -w /captures/iot_session.pcap"
+    depends_on:
+      broker:
+        condition: service_healthy
+
+  # ── Analisador Passivo (AI Server) ───────────────────────
+  # Lê os metadados de pacotes gerados pelo capture container.
+  # NÃO subscreve MQTT, NÃO decifra payload.
+  # Features: tamanho de pacote (frame.len) e IAT do timestamp.
+  # Identificação do device: ip.src (visível na camada IP sem decifrar).
+  ai-server:
+    build: ./ai-server
+    container_name: iot-ai-server
+    depends_on:
+      - capture
+    volumes:
+      - ./captures:/captures         # lê flow_fields.csv do capture
+      - ./data:/app/data             # modelo + base de dados SQLite
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MODEL_PATH=/app/data/model.joblib
+      - BINARY_MODEL_PATH=/app/data/binary_model.joblib
+      - FLOW_FIELDS=/captures/flow_fields.csv
+      - DB_PATH=/app/data/iot_traffic.db
+      # Mapeamento IP → classe de tráfego (sem decifrar payload)
+      - IP_DEVICE1=172.20.0.10
+      - IP_DEVICE2=172.20.0.11
+      - IP_DEVICE3=172.20.0.12
+      - BROKER_IP=172.20.0.2
+      - CLASS_DEVICE1=telemetry
+      - CLASS_DEVICE2=event_driven
+      - CLASS_DEVICE3=firmware
+    networks:
+      - iot-net
+
+  # ── Dashboard Web com Login de Admin ────────────────────
+  dashboard:
+    build: ./dashboard
+    container_name: iot-dashboard
+    ports:
+      - "8080:8080"             # acedes em http://localhost:8080
+    depends_on:
+      - ai-server
+    volumes:
+      - ./data:/app/data        # partilha a mesma BD do ai-server
+    environment:
+      - ADMIN_PASSWORD=iot2025  # password do admin (alterável)
+      - SECRET_KEY=supersecretkey123
+    networks:
+      - iot-net
+
+networks:
+  iot-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24

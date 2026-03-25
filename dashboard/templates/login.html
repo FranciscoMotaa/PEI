@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IoT Dashboard — Login</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 16px;
+      padding: 40px;
+      width: 360px;
+      text-align: center;
+      color: #fff;
+    }
+    .card h1 { font-size: 1.6rem; margin-bottom: 6px; }
+    .card p  { font-size: 0.85rem; color: #aaa; margin-bottom: 28px; }
+    input[type=password] {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      font-size: 1rem;
+      margin-bottom: 16px;
+      outline: none;
+    }
+    input[type=password]::placeholder { color: #888; }
+    button {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: none;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.85; }
+    .error { color: #ff6b6b; margin-top: 12px; font-size: 0.9rem; }
+    .icon { font-size: 2.5rem; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🔒</div>
+    <h1>IoT Dashboard</h1>
+    <p>Classificação de Tráfego em Tempo Real</p>
+    <form method="post">
+      <input type="password" name="password" placeholder="Password de administrador" autofocus>
+      <button type="submit">Entrar</button>
+    </form>
+    {% if error %}
+    <p class="error">{{ error }}</p>
+    {% endif %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IoT Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+    }
+    header {
+      background: linear-gradient(90deg, #161b22, #21262d);
+      border-bottom: 1px solid #30363d;
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header h1 { font-size: 1.2rem; }
+    header a  { color: #8b949e; text-decoration: none; font-size: 0.85rem; }
+    header a:hover { color: #fff; }
+
+    .main { padding: 24px 32px; }
+
+    /* Cards de stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 18px;
+      text-align: center;
+    }
+    .stat-card .label { font-size: 0.75rem; color: #8b949e; margin-bottom: 6px; text-transform: uppercase; }
+    .stat-card .value { font-size: 1.6rem; font-weight: 700; }
+
+    /* Cores por classe */
+    .normal     { color: #3fb950; }
+    .backdoor   { color: #f85149; }
+    .ddos       { color: #ff7b72; }
+    .dos        { color: #ffa657; }
+    .injection  { color: #d2a8ff; }
+    .mitm       { color: #79c0ff; }
+    .password   { color: #e3b341; }
+    .ransomware { color: #f85149; }
+    .scanning   { color: #56d364; }
+    .xss        { color: #bc8cff; }
+
+    /* Tabela */
+    h2 { margin-bottom: 14px; font-size: 1rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+    table { width: 100%; border-collapse: collapse; background: #161b22; border-radius: 12px; overflow: hidden; border: 1px solid #30363d; }
+    th { padding: 12px 16px; background: #21262d; font-size: 0.75rem; text-align: left; color: #8b949e; text-transform: uppercase; }
+    td { padding: 10px 16px; border-top: 1px solid #21262d; font-size: 0.85rem; }
+    tr:hover td { background: rgba(255,255,255,0.03); }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: rgba(255,255,255,0.08);
+    }
+
+    .refresh-info { color: #8b949e; font-size: 0.78rem; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🛡️ IoT Traffic Dashboard</h1>
+    <a href="/logout">Sair</a>
+  </header>
+
+  <div class="main">
+
+    <!-- Cards de distribuição de classes -->
+    <div class="stats-grid">
+      {% for s in stats %}
+      <div class="stat-card">
+        <div class="label">{{ s['predicted'] }}</div>
+        <div class="value {{ s['predicted'] }}">{{ s['count'] }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Dispositivos -->
+    <h2>Dispositivos</h2>
+    <table style="margin-bottom: 28px;">
+      <tr>
+        <th>Device ID</th>
+        <th>Classificações</th>
+        <th>Confiança Média</th>
+      </tr>
+      {% for d in devices %}
+      <tr>
+        <td>{{ d['device_id'] }}</td>
+        <td>{{ d['count'] }}</td>
+        <td>{{ '%.1f' % d['avg_conf'] }}%</td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    <!-- Tabela de classificações recentes -->
+    <h2>Classificações Recentes</h2>
+    <p class="refresh-info">🔄 Atualiza automaticamente a cada 5 segundos</p>
+    <table id="classifications-table">
+      <tr>
+        <th>Timestamp</th>
+        <th>Dispositivo</th>
+        <th>Classe</th>
+        <th>Confiança</th>
+        <th>Pacotes</th>
+        <th>Avg Size</th>
+        <th>Avg IAT</th>
+        <th>Total Bytes</th>
+      </tr>
+      {% for r in rows %}
+      <tr>
+        <td>{{ '%0.0f' % r['timestamp'] | int }}</td>
+        <td>{{ r['device_id'] }}</td>
+        <td><span class="badge {{ r['predicted'] }}">{{ r['predicted'] }}</span></td>
+        <td>{{ r['confidence'] }}%</td>
+        <td>{{ r['num_packets'] }}</td>
+        <td>{{ '%.0f' % r['avg_size'] }}B</td>
+        <td>{{ '%.2f' % r['avg_iat'] }}s</td>
+        <td>{{ r['total_bytes'] }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <script>
+    // Auto-refresh da tabela a cada 5 segundos
+    async function refreshTable() {
+      try {
+        const res = await fetch("/api/latest");
+        const data = await res.json();
+        const tbody = document.getElementById("classifications-table");
+
+        // Mantém o cabeçalho, substitui o resto
+        const header = tbody.rows[0];
+        tbody.innerHTML = "";
+        tbody.appendChild(header);
+
+        data.forEach(r => {
+          const ts = new Date(r.timestamp * 1000).toLocaleTimeString("pt-PT");
+          const row = `<tr>
+            <td>${ts}</td>
+            <td>${r.device_id}</td>
+            <td><span class="badge ${r.predicted}">${r.predicted}</span></td>
+            <td>${r.confidence}%</td>
+            <td>${r.num_packets}</td>
+            <td>${Math.round(r.avg_size)}B</td>
+            <td>${r.avg_iat.toFixed(2)}s</td>
+            <td>${r.total_bytes}</td>
+          </tr>`;
+          tbody.insertAdjacentHTML("beforeend", row);
+        });
+      } catch(e) { /* silencioso se a BD ainda não existir */ }
+    }
+
+    setInterval(refreshTable, 5000);
+  </script>
+</body>
+</html>

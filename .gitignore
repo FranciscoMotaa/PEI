@@ -4,3 +4,4 @@ data/self_generated.csv
 data/*.joblib
 .venv/
 __pycache__/
+certs/
