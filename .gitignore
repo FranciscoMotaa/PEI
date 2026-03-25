@@ -1,1 +1,6 @@
-.pcap
+captures/
+data/iot_traffic.db
+data/self_generated.csv
+data/*.joblib
+.venv/
+__pycache__/
