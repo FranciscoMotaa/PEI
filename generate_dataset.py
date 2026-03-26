@@ -1,141 +1,133 @@
 """
-generate_dataset.py — Gera dataset de treino a partir dos dispositivos IoT reais
+generate_dataset.py — Gera dataset de treino a partir de PCAPs usando NFStream
 =================================================================================
-Lê a base de dados SQLite do sistema, mapeia device_id → classe de tráfego,
-e augmenta com amostras sintéticas realistas se necessário.
-
-Uso:
-    python generate_dataset.py --db ./data/iot_traffic.db --out ./data/self_generated.csv
+Lê caputuras passadas (ex: iot_session.pcap) com a framework académica NFStream,
+extrai as estatísticas oficias dos fluxos com um active_timeout idêntico ao 
+servidor AI (10s), e combina com dados sintéticos gerados se existirem poucas amostras.
 """
 
 import argparse
 import os
-import sqlite3
 import sys
 
 import numpy as np
 import pandas as pd
-
-# Mapeamento device_id / IP → classe de tráfego
-DEVICE_CLASS_MAP = {
-    # Suporte aos IPs reais fixados no docker-compose
-    "172.20.0.10": "telemetry",
-    "172.20.0.11": "event_driven",
-    "172.20.0.12": "firmware",
-    # Passado (legado se existir BD antiga)
-    "device1": "telemetry",
-    "device2": "event_driven",
-    "device3": "firmware",
-}
+from nfstream import NFStreamer
 
 FEATURE_COLS = ["num_packets", "avg_size", "std_size", "avg_iat", "total_bytes"]
 LABEL_COL    = "traffic_class"
-MIN_SAMPLES  = 500   # mínimo por classe para treino fiável
+MIN_SAMPLES  = 500
 
+DEVICE_CLASS_MAP = {
+    "172.20.0.10": "telemetry",
+    "172.20.0.11": "event_driven",
+    "172.20.0.12": "firmware",
+}
+BROKER_IP = "172.20.0.2"
 
-def read_from_db(db_path: str) -> pd.DataFrame:
-    """Lê as classificações da BD e mapeia device_id para classe."""
-    conn = sqlite3.connect(db_path)
-    
-    # Verifica primeiro se a tabela existe (o ficheiro pode ter sido criado vazio pelo dashboard)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='classifications'")
-    if not cursor.fetchone():
-        print("[GEN] Tabela 'classifications' não existe na BD. A gerar apenas dados sintéticos...")
-        conn.close()
+def read_from_pcap(pcap_path: str) -> pd.DataFrame:
+    print(f"[GEN] A analisar PCAP com NFStream: {pcap_path}")
+    if not os.path.exists(pcap_path):
+        print("[GEN] Ficheiro pcap não encontrado! Retornando vazio.")
         return pd.DataFrame(columns=FEATURE_COLS + [LABEL_COL])
 
-    df = pd.read_sql("SELECT device_id, num_packets, avg_size, std_size, avg_iat, total_bytes FROM classifications", conn)
-    conn.close()
+    streamer = NFStreamer(source=pcap_path,
+                          bpf_filter="tcp port 8883",
+                          statistical_analysis=True,
+                          active_timeout=10)
+    rows = []
+    
+    for flow in streamer:
+        src_ip = flow.src_ip
+        dst_ip = flow.dst_ip
+        
+        # Filtro pacotes que não vão em direção ao broker
+        if src_ip not in DEVICE_CLASS_MAP or dst_ip != BROKER_IP:
+            continue
+            
+        traffic_class = DEVICE_CLASS_MAP[src_ip]
+        
+        # O NFStream pode devolver NaN se não houver pacotes suficientes para stdev, etc.
+        rows.append([
+            flow.bidirectional_packets,
+            flow.bidirectional_mean_ps,
+            flow.bidirectional_stddev_ps,
+            flow.bidirectional_mean_piat_ms / 1000.0, # ms para segundos
+            flow.bidirectional_bytes,
+            traffic_class
+        ])
 
-    df[LABEL_COL] = df["device_id"].map(DEVICE_CLASS_MAP)
-    df = df.dropna(subset=[LABEL_COL])  # remove device_ids desconhecidos
-    print(f"[GEN] BD: {len(df)} registos encontrados.")
-    print(f"[GEN] Distribuição atual:\n{df[LABEL_COL].value_counts()}\n")
-    return df[FEATURE_COLS + [LABEL_COL]]
+    df = pd.DataFrame(rows, columns=FEATURE_COLS + [LABEL_COL])
+    df = df.fillna(0) # Segurança para fluxos de apenas 1 pacote sem stdev
+    print(f"[GEN] Ficheiro rendeu {len(df)} recortes de tráfego de 10s.")
+    return df
 
 
-def generate_synthetic(traffic_class: str, n: int) -> pd.DataFrame:
-    """
-    Gera n amostras sintéticas realistas para cada classe.
-    Distribuições baseadas nos padrões reais dos dispositivos.
-    """
+def generate_synthetic(traffic_class: str, n: int, real_data: pd.DataFrame) -> pd.DataFrame:
+    """Gera amostras artificiais com base nas características médias observadas dos routers."""
     rng = np.random.default_rng(42)
     rows = []
+    
+    # Se já tivermos dados reais, usamos a média. Se não, geramos por dedução.
+    if len(real_data) > 0:
+        base_num = max(2, real_data["num_packets"].mean())
+        base_avg_size = real_data["avg_size"].mean()
+        base_std_size = real_data["std_size"].mean()
+        base_avg_iat = real_data["avg_iat"].mean()
+    else:
+        # Fallbacks genéricos caso PCAP não tenha classes completas
+        if traffic_class == "telemetry":
+            base_num, base_avg_size, base_std_size, base_avg_iat = 20, 160, 50, 1.0
+        elif traffic_class == "event_driven":
+            base_num, base_avg_size, base_std_size, base_avg_iat = 10, 200, 100, 2.5
+        else:
+            base_num, base_avg_size, base_std_size, base_avg_iat = 100, 600, 60, 0.05
 
-    if traffic_class == "telemetry":
-        # device1: envio a cada ~5s. Com ACKs TCP/TLS as médias na rede descem.
-        for _ in range(n):
-            num_pkts   = rng.integers(15, 30)
-            avg_size   = rng.uniform(140, 160)
-            std_size   = rng.uniform(50, 150)
-            avg_iat    = rng.uniform(1.8, 2.5)
-            total_b    = int(num_pkts * avg_size)
-            rows.append([num_pkts, avg_size, std_size, avg_iat, total_b, "telemetry"])
-
-    elif traffic_class == "event_driven":
-        # device2: bursts aleatórios, mas features similares à telemetria só que mais irregulares
-        for _ in range(n):
-            num_pkts   = rng.integers(15, 60)
-            avg_size   = rng.uniform(130, 250)
-            std_size   = rng.uniform(100, 300)
-            avg_iat    = rng.exponential(scale=2.5)
-            total_b    = int(num_pkts * avg_size)
-            rows.append([num_pkts, avg_size, std_size, avg_iat, total_b, "event_driven"])
-
-    elif traffic_class == "firmware":
-        # device3: chunks TCP (MTU ~1500 ou TLS ~600), fluxo intenso
-        for _ in range(n):
-            num_pkts   = rng.integers(20, 300)
-            avg_size   = rng.uniform(500, 650)          
-            std_size   = rng.uniform(50, 120)           
-            avg_iat    = rng.uniform(0.010, 1.80)      
-            total_b    = int(num_pkts * avg_size)
-            rows.append([num_pkts, avg_size, std_size, avg_iat, total_b, "firmware"])
+    for _ in range(n):
+        num_pkts = int(max(2, rng.normal(base_num, base_num * 0.2)))
+        avg_size = max(50, rng.normal(base_avg_size, 20))
+        std_size = max(0, rng.normal(base_std_size, 15))
+        avg_iat  = max(0.001, rng.normal(base_avg_iat, base_avg_iat * 0.2))
+        total_b  = int(num_pkts * avg_size)
+        
+        rows.append([num_pkts, avg_size, std_size, avg_iat, total_b, traffic_class])
 
     return pd.DataFrame(rows, columns=FEATURE_COLS + [LABEL_COL])
 
 
 def build_dataset(df_real: pd.DataFrame) -> pd.DataFrame:
-    """Combina dados reais com sintéticos para atingir MIN_SAMPLES por classe."""
     frames = [df_real]
-
-    for cls in DEVICE_CLASS_MAP.values():
-        real_count = len(df_real[df_real[LABEL_COL] == cls])
-        needed = max(0, MIN_SAMPLES - real_count)
-        if needed > 0:
-            print(f"[GEN] '{cls}': {real_count} reais + {needed} sintéticos = {real_count + needed}")
-            frames.append(generate_synthetic(cls, needed))
+    for cls in ["telemetry", "event_driven", "firmware"]:
+        real_cls = df_real[df_real[LABEL_COL] == cls]
+        count = len(real_cls)
+        
+        if count < MIN_SAMPLES:
+            needed = MIN_SAMPLES - count
+            print(f"[GEN] Aumentar classe '{cls}': {count} reais + {needed} gerados abstratos = {MIN_SAMPLES}")
+            df_syn = generate_synthetic(cls, needed, real_cls)
+            frames.append(df_syn)
         else:
-            print(f"[GEN] '{cls}': {real_count} reais (suficiente)")
+            print(f"[GEN] Classe '{cls}': {count} amostras puras.")
 
-    combined = pd.concat(frames, ignore_index=True).sample(frac=1, random_state=42)
-    print(f"\n[GEN] Dataset final: {len(combined)} registos.")
-    print(f"[GEN] Classes:\n{combined[LABEL_COL].value_counts()}\n")
-    return combined
+    df_final = pd.concat(frames, ignore_index=True)
+    return df_final
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Gerar dataset de treino a partir da BD IoT")
-    parser.add_argument("--db",  default="./data/iot_traffic.db",   help="Caminho para a BD SQLite")
-    parser.add_argument("--out", default="./data/self_generated.csv", help="Caminho do CSV de saída")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--pcap", default="./captures/iot_session.pcap", help="Ficheiro source")
+    parser.add_argument("--out", default="./data/self_generated.csv", help="Saída de dataset")
     args = parser.parse_args()
 
-    if not os.path.exists(args.db):
-        print(f"[GEN] BD não encontrada: {args.db}")
-        print("[GEN] Certifica-te que o sistema está a correr e já gerou classificações.")
-        print("[GEN] A gerar dataset puramente sintético como fallback...")
-        df_real = pd.DataFrame(columns=FEATURE_COLS + [LABEL_COL])
-    else:
-        df_real = read_from_db(args.db)
+    df_real = read_from_pcap(args.pcap)
+    if not df_real.empty:
+        print(f"[GEN] Total de recortes NFStream antes de aumento: \n{df_real[LABEL_COL].value_counts()}\n")
 
     df_final = build_dataset(df_real)
-    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-    df_final.to_csv(args.out, index=False)
-    print(f"[GEN] Guardado em: {args.out}")
-    print("[GEN] Agora corre:")
-    print(f"       python ai-server/train.py --csv {args.out} --out ./data/model.joblib")
+    print(f"\n[GEN] Tabela Resultante (NFStream): \n{df_final[LABEL_COL].value_counts()}")
 
+    df_final.to_csv(args.out, index=False)
+    print(f"\n[GEN] Terminado e exportado para: {args.out}")
 
 if __name__ == "__main__":
     main()

@@ -78,47 +78,25 @@ services:
       iot-net:
         ipv4_address: 172.20.0.12   # IP fixo → identificação sem decifrar
 
-  # ── Captura de Tráfego (observador passivo) ──────────────
-  # Captura pacotes na rede sem decifrar o conteúdo TLS.
-  # Extrai apenas metadata da camada de transporte:
-  #   frame.time_epoch — timestamp de chegada
-  #   frame.len        — tamanho do pacote IP (TLS record size + headers)
-  #   ip.src / ip.dst  — endereços IP (visíveis nos headers)
-  capture:
-    image: nicolaka/netshoot
-    container_name: iot-capture
+  # ── Analisador Passivo (AI Server / NFStream) ────────────
+  # Captura diretamente da rede usando NFStream (sem decifrar payload)
+  # Partilha a interface de rede com o broker para ver todo o tráfego MQTT.
+  ai-server:
+    build: ./ai-server
+    container_name: iot-ai-server
     cap_add:
       - NET_ADMIN
       - NET_RAW
     network_mode: "service:broker"
-    volumes:
-      - ./captures:/captures
-    entrypoint: ["/bin/sh", "-c"]
-    command: >
-      "tshark -i eth0 -f 'tcp port 8883' -T fields -e frame.time_epoch -e frame.len -e ip.src -e ip.dst -E separator=, -l > /captures/flow_fields.csv &
-       tshark -i eth0 -f 'tcp port 8883' -w /captures/iot_session.pcap"
     depends_on:
       broker:
         condition: service_healthy
-
-  # ── Analisador Passivo (AI Server) ───────────────────────
-  # Lê os metadados de pacotes gerados pelo capture container.
-  # NÃO subscreve MQTT, NÃO decifra payload.
-  # Features: tamanho de pacote (frame.len) e IAT do timestamp.
-  # Identificação do device: ip.src (visível na camada IP sem decifrar).
-  ai-server:
-    build: ./ai-server
-    container_name: iot-ai-server
-    depends_on:
-      - capture
     volumes:
-      - ./captures:/captures         # lê flow_fields.csv do capture
       - ./data:/app/data             # modelo + base de dados SQLite
     environment:
       - PYTHONUNBUFFERED=1
       - MODEL_PATH=/app/data/model.joblib
       - BINARY_MODEL_PATH=/app/data/binary_model.joblib
-      - FLOW_FIELDS=/captures/flow_fields.csv
       - DB_PATH=/app/data/iot_traffic.db
       # Mapeamento IP → classe de tráfego (sem decifrar payload)
       - IP_DEVICE1=172.20.0.10
@@ -128,8 +106,6 @@ services:
       - CLASS_DEVICE1=telemetry
       - CLASS_DEVICE2=event_driven
       - CLASS_DEVICE3=firmware
-    networks:
-      - iot-net
 
   # ── Dashboard Web com Login de Admin ────────────────────
   dashboard:

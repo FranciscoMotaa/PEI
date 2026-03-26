@@ -14,8 +14,11 @@ Filosofia: observador passivo que só vê o que está disponível na camada de r
 import os
 import sqlite3
 import time
-import csv
 from collections import defaultdict
+
+import joblib
+import numpy as np
+from nfstream import NFStreamer
 
 import joblib
 import numpy as np
@@ -89,118 +92,66 @@ def load_model(path, name):
     return clf
 
 
-# ── Extração de features (transporte — sem decifrar) ─────────────────────────
-def extract_features(packets: list) -> dict:
+# ── Análise Passiva com NFStream ──────────────────────────────────────────────
+def start_nfstream(clf, clf_bin=None):
     """
-    Extrai features da camada de transporte.
-    - sizes: frame.len (tamanho do pacote IP, visível sem decifrar)
-    - iats:  inter-arrival times calculados dos timestamps de chegada
-    Nunca acede ao conteúdo do payload TLS/MQTT.
+    Usa a framework NFStream para capturar tráfego real-time na interface eth0.
+    Agrupa os pacotes em fluxos ativos num timeout contínuo e gera features padrão.
     """
-    sizes = [p["size"] for p in packets]
-    times = [p["ts"]   for p in packets]
+    print("[CAPTURE] A iniciar NFStreamer na interface eth0...")
+    # active_timeout=10 significa que converte ligações longas MQTT em 
+    # amostras independentes a cada 10 segundos!
+    streamer = NFStreamer(source="eth0",
+                          bpf_filter="tcp port 8883",
+                          statistical_analysis=True,
+                          active_timeout=10)
 
-    iats = [times[i+1] - times[i]
-            for i in range(len(times)-1)] if len(times) > 1 else [0]
+    for flow in streamer:
+        src_ip = flow.src_ip
+        dst_ip = flow.dst_ip
 
-    return {
-        "num_packets": len(packets),
-        "avg_size":    float(np.mean(sizes)),
-        "std_size":    float(np.std(sizes)),
-        "avg_iat":     float(np.mean(iats)),
-        "total_bytes": int(np.sum(sizes)),
-    }
+        # Filtrar: só pacotes de dispositivos conhecidos → broker
+        if src_ip not in IP_CLASS_MAP or dst_ip != BROKER_IP:
+            continue
 
+        # Extrair features oficiais do NFStream
+        features = {
+            "num_packets": flow.bidirectional_packets,
+            "avg_size":    flow.bidirectional_mean_ps,
+            "std_size":    flow.bidirectional_stddev_ps,
+            "avg_iat":     flow.bidirectional_mean_piat_ms / 1000.0, # ms para segundos
+            "total_bytes": flow.bidirectional_bytes,
+        }
 
-# ── Janelas por fluxo ─────────────────────────────────────────────────────────
-flow_windows = defaultdict(list)   # ip.src → lista de pacotes
+        X = [[
+            features["num_packets"],
+            features["avg_size"],
+            features["std_size"],
+            features["avg_iat"],
+            features["total_bytes"],
+        ]]
 
+        # Classificação de comportamento (telemetry / event_driven / firmware)
+        predicted  = clf.predict(X)[0]
+        proba      = clf.predict_proba(X)[0]
+        confidence = round(float(max(proba)) * 100, 1)
 
-def classify_flow(src_ip, clf, clf_bin=None):
-    """Classifica quando a janela de WINDOW_SIZE pacotes estiver cheia."""
-    packets = flow_windows[src_ip]
-    if len(packets) < WINDOW_SIZE:
-        return
+        # Classificação binária (Encrypted / Non-Encrypted)
+        enc_label = clf_bin.predict(X)[0] if clf_bin else "N/A"
+        device_label = IP_CLASS_MAP.get(src_ip, src_ip)
 
-    features = extract_features(packets)
-    X = [[
-        features["num_packets"],
-        features["avg_size"],
-        features["std_size"],
-        features["avg_iat"],
-        features["total_bytes"],
-    ]]
+        print(f"[AI] {src_ip} ({device_label}) → {predicted} ({confidence}%) | {enc_label} | "
+              f"pkts={features['num_packets']} "
+              f"avg_size={features['avg_size']:.0f}B "
+              f"avg_iat={features['avg_iat']:.3f}s "
+              f"total={features['total_bytes']}B")
 
-    # Classificação de comportamento (telemetry / event_driven / firmware)
-    predicted  = clf.predict(X)[0]
-    proba      = clf.predict_proba(X)[0]
-    confidence = round(float(max(proba)) * 100, 1)
-
-    # Classificação binária (Encrypted / Non-Encrypted)
-    enc_label = clf_bin.predict(X)[0] if clf_bin else "N/A"
-
-    device_label = IP_CLASS_MAP.get(src_ip, src_ip)
-    print(f"[AI] {src_ip} ({device_label}) → {predicted} ({confidence}%) | {enc_label} | "
-          f"pkts={features['num_packets']} "
-          f"avg_size={features['avg_size']:.0f}B "
-          f"avg_iat={features['avg_iat']:.3f}s "
-          f"total={features['total_bytes']}B")
-
-    save_classification(src_ip, predicted, confidence, features)
-
-    # Sliding window
-    flow_windows[src_ip] = packets[WINDOW_SLIDE:]
-
-
-# ── Leitura do ficheiro de campos tshark ─────────────────────────────────────
-def tail_flow_fields(path: str):
-    """
-    Lê o ficheiro CSV gerado pelo tshark linha a linha, em modo tail.
-    Cada linha contém: frame.time_epoch, frame.len, ip.src, ip.dst
-    """
-    print(f"[CAPTURE] A aguardar ficheiro de campos: {path}")
-    while not os.path.exists(path):
-        time.sleep(2)
-    print(f"[CAPTURE] Ficheiro encontrado. A processar metadados de pacotes...")
-
-    with open(path, "r") as f:
-        reader = csv.DictReader(f)
-        # Vai para o fim do ficheiro e lê novas linhas
-        f.seek(0, 2)   # seek to end
-
-        while True:
-            line = f.readline()
-            if not line:
-                time.sleep(0.1)
-                continue
-
-            # Parse da linha CSV
-            try:
-                parts = line.strip().split(",")
-                if len(parts) < 4:
-                    continue
-                ts      = float(parts[0])
-                size    = int(parts[1])
-                src_ip  = parts[2].strip()
-                dst_ip  = parts[3].strip()
-            except (ValueError, IndexError):
-                continue   # linha de header ou malformada
-
-            # Filtrar: só pacotes de dispositivos conhecidos → broker
-            if src_ip not in IP_CLASS_MAP:
-                continue
-            if dst_ip != BROKER_IP:
-                continue
-
-            # Acumula pacote na janela do dispositivo (identificado por ip.src)
-            flow_windows[src_ip].append({"ts": ts, "size": size})
-            classify_flow(src_ip, clf, clf_bin)
+        save_classification(src_ip, predicted, confidence, features)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
-print("[SERVER] A iniciar Analisador Passivo IoT (Transport Layer)...")
+print("[SERVER] A iniciar Analisador Passivo IoT (NFStream Edition)...")
 print(f"[SERVER] Mapeamento IP→Classe: {IP_CLASS_MAP}")
-print(f"[SERVER] Janela: {WINDOW_SIZE} pacotes | Slide: {WINDOW_SLIDE}")
 
 init_db()
 clf     = load_model(MODEL_PATH,        "Modelo de tráfego")
@@ -212,4 +163,4 @@ if clf is None:
     print("  python ai-server/train.py --csv ./data/self_generated.csv --out ./data/model.joblib")
     exit(1)
 
-tail_flow_fields(FLOW_FIELDS)
+start_nfstream(clf, clf_bin)
