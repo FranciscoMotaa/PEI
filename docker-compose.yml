@@ -24,6 +24,8 @@ services:
   iot-device-1:
     build: ./devices/device1
     container_name: iot-device-1
+    cap_add:
+      - NET_ADMIN
     depends_on:
       broker:
         condition: service_healthy
@@ -44,6 +46,8 @@ services:
   iot-device-2:
     build: ./devices/device2
     container_name: iot-device-2
+    cap_add:
+      - NET_ADMIN
     depends_on:
       broker:
         condition: service_healthy
@@ -64,6 +68,8 @@ services:
   iot-device-3:
     build: ./devices/device3
     container_name: iot-device-3
+    cap_add:
+      - NET_ADMIN
     depends_on:
       broker:
         condition: service_healthy
@@ -111,12 +117,14 @@ services:
   dashboard:
     build: ./dashboard
     container_name: iot-dashboard
+    user: "root"
     ports:
       - "8080:8080"             # acedes em http://localhost:8080
     depends_on:
       - ai-server
     volumes:
       - ./data:/app/data        # partilha a mesma BD do ai-server
+      - /var/run/docker.sock:/var/run/docker.sock # Simulador de Rede
     environment:
       - ADMIN_PASSWORD=iot2025  # password do admin (alterável)
       - SECRET_KEY=supersecretkey123

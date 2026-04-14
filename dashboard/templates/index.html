@@ -72,15 +72,100 @@
     }
 
     .refresh-info { color: #8b949e; font-size: 0.78rem; margin-bottom: 12px; }
+
+    @keyframes pulse {
+      0% { opacity: 0.2; transform: translateX(-5px); }
+      50% { opacity: 1; transform: translateX(5px); }
+      100% { opacity: 0.2; transform: translateX(-5px); }
+    }
   </style>
 </head>
 <body>
   <header>
     <h1>🛡️ IoT Traffic Dashboard</h1>
-    <a href="/logout">Sair</a>
+    <nav style="display:flex; gap:16px; align-items:center;">
+      <a href="/" style="color:#fff; text-decoration:none; font-size:0.85rem;">Dashboard</a>
+      <a href="/robustness" style="color:#8b949e; text-decoration:none; font-size:0.85rem;">📊 Robustez</a>
+      <a href="/logout" style="color:#8b949e; text-decoration:none; font-size:0.85rem;">Sair</a>
+    </nav>
   </header>
 
   <div class="main">
+
+  <div class="main">
+
+    <!-- Simulador de Rede -->
+    <h2>Simulador de Rede</h2>
+    <div style="background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; margin-bottom: 28px; display: flex; flex-direction: column; gap: 20px;">
+      
+      <!-- Topologia Visual Simulada -->
+      <div style="display: flex; justify-content: space-around; align-items: center; padding: 20px; background: #0d1117; border-radius: 8px;">
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="text-align: center;">
+            <div style="font-size: 1.5rem;">📡</div>
+            <div style="font-size: 0.70rem; color: #8b949e;">iot-device-1 (Telemetry)</div>
+          </div>
+          <div style="text-align: center;">
+            <div style="font-size: 1.5rem;">⚡</div>
+            <div style="font-size: 0.70rem; color: #8b949e;">iot-device-2 (Events)</div>
+          </div>
+          <div style="text-align: center;">
+            <div style="font-size: 1.5rem;">📦</div>
+            <div style="font-size: 0.70rem; color: #8b949e;">iot-device-3 (Firmware)</div>
+          </div>
+        </div>
+        <div style="font-size: 1.5rem; color: #3fb950; animation: pulse 1.5s infinite;">➡️➡️</div>
+        <div style="text-align: center;">
+          <div style="font-size: 2.5rem;">☁️</div>
+          <div style="font-size: 0.85rem; font-weight: bold; color: #e6edf3;">Mosquitto Broker</div>
+          <div style="font-size: 0.70rem; color: #8b949e;">(TLS 8883)</div>
+        </div>
+        <div style="font-size: 1.5rem; color: #79c0ff; animation: pulse 1.5s infinite; animation-delay: 0.75s;">➡️➡️</div>
+        <div style="text-align: center;">
+          <div style="font-size: 2.5rem;">🧠</div>
+          <div style="font-size: 0.85rem; font-weight: bold; color: #e6edf3;">AI Server (NFStream)</div>
+          <div style="font-size: 0.70rem; color: #8b949e;">Classificação Passiva</div>
+        </div>
+      </div>
+
+      <!-- Controles -->
+      <div style="display: flex; gap: 20px; align-items: flex-end;">
+        <div style="flex: 1;">
+          <label style="font-size: 0.8rem; color: #8b949e; display: block; margin-bottom: 8px;">Selecionar Dispositivo</label>
+          <select id="sim-device" style="width: 100%; padding: 8px; border-radius: 6px; background: #21262d; color: #fff; border: 1px solid #30363d; outline: none;">
+            <option value="iot-device-1">Device 1 (Telemetry) - 172.20.0.10</option>
+            <option value="iot-device-2">Device 2 (Event-Driven) - 172.20.0.11</option>
+            <option value="iot-device-3">Device 3 (Firmware) - 172.20.0.12</option>
+          </select>
+        </div>
+        <div style="flex: 1;">
+          <label style="font-size: 0.8rem; color: #8b949e; display: block; margin-bottom: 8px;">Latência Adicional: <span id="val-delay" style="color: #fff; font-weight: bold;">0</span> ms</label>
+          <input type="range" id="sim-delay" min="0" max="1000" step="10" value="0" style="width: 100%; cursor: ew-resize;" oninput="document.getElementById('val-delay').innerText = this.value">
+        </div>
+        <div style="flex: 1;">
+          <label style="font-size: 0.8rem; color: #8b949e; display: block; margin-bottom: 8px;">Perda de Pacotes: <span id="val-loss" style="color: #fff; font-weight: bold;">0</span> %</label>
+          <input type="range" id="sim-loss" min="0" max="50" step="1" value="0" style="width: 100%; cursor: ew-resize;" oninput="document.getElementById('val-loss').innerText = this.value">
+        </div>
+        <div>
+          <button onclick="applyNetworkChange()" style="padding: 10px 16px; background: #3fb950; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: background 0.2s;">⚠️ Aplicar Regra</button>
+        </div>
+      </div>
+      <div id="sim-feedback" style="font-size: 0.85rem; color: #56d364; text-align: right; min-height: 20px;"></div>
+    </div>
+
+    <!-- Terminal Live Matrix -->
+    <h2>Terminal Live (AI & Encriptação)</h2>
+    <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 12px; margin-bottom: 28px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+      <div style="background: #161b22; padding: 8px 16px; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 8px;">
+        <div style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f56;"></div>
+        <div style="width: 12px; height: 12px; border-radius: 50%; background: #ffbd2e;"></div>
+        <div style="width: 12px; height: 12px; border-radius: 50%; background: #27c93f;"></div>
+        <span style="color: #8b949e; font-size: 0.8rem; margin-left: 8px; font-family: monospace;">iot-traffic-monitoring-cli</span>
+      </div>
+      <div id="live-terminal" style="height: 300px; overflow-y: auto; padding: 16px; font-family: 'Courier New', Courier, monospace; font-size: 0.85rem; line-height: 1.6; color: #56d364; display: flex; flex-direction: column;">
+        <div class="waiting-msg" style="color: #8b949e; margin-bottom: 8px;">> A aguardar tráfego na interface eth0...</div>
+      </div>
+    </div>
 
     <!-- Cards de distribuição de classes -->
     <div class="stats-grid">
@@ -139,6 +224,160 @@
   </div>
 
   <script>
+    // Track last rendered item IDs to avoid duplicates without blocking new data
+    let lastMaxTimestamp = 0;
+    let terminalItems = []; // rolling buffer of rendered items
+
+    async function refreshTerminal() {
+      try {
+        const res = await fetch("/api/terminal_feed");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data || !data.length) return;
+
+        const terminal = document.getElementById("live-terminal");
+
+        // Find items newer than what we last showed
+        const newItems = data.filter(item => item.timestamp > lastMaxTimestamp);
+        if (!newItems.length) return;
+
+        // Remove the "waiting" placeholder on first real data
+        const placeholder = terminal.querySelector(".waiting-msg");
+        if (placeholder) placeholder.remove();
+
+        newItems.forEach(item => {
+          if (item.timestamp > lastMaxTimestamp) lastMaxTimestamp = item.timestamp;
+
+          const timeStr = new Date(item.timestamp * 1000).toLocaleTimeString("pt-PT");
+          const div = document.createElement("div");
+          div.style.marginBottom = "4px";
+
+          if (item.type === "packet") {
+            const payload = item.payload_hex || '17 03 03 00 2b 45 42 a7';
+            const src_p = item.src_port || '---';
+            const dst_p = item.dst_port || '---';
+            const ttl = item.ttl || '--';
+
+            div.style.background = "#161b22";
+            div.style.padding = "10px";
+            div.style.borderRadius = "6px";
+            div.style.marginTop = "4px";
+            div.style.borderLeft = "3px solid #e3b341";
+
+            div.innerHTML = `
+              <div style="color: #8b949e; font-size: 0.75rem; margin-bottom: 6px;">[${timeStr}] 📡 RAW SOCKET (CAMADA 3 E 4)</div>
+              <div style="background: rgba(46, 160, 67, 0.1); border: 1px solid rgba(46, 160, 67, 0.4); padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+                <strong style="color: #3fb950; font-size: 0.75rem; display: block; margin-bottom: 4px;">CABEÇALHOS (NÃO ENCRIPTADOS):</strong>
+                <div style="display: flex; gap: 12px; font-size: 0.8rem; color: #c9d1d9; font-family: monospace;">
+                  <div><span style="color: #8b949e;">Origem:</span> [${item.src_ip}]:${src_p}</div>
+                  <div style="color: #8b949e;">➔</div>
+                  <div><span style="color: #8b949e;">Destino:</span> [Broker]:${dst_p}</div>
+                  <div style="margin-left: 10px;"><strong style="color: #e3b341;">LEN: ${item.size} Bytes</strong></div>
+                  <div><span style="color: #8b949e;">TTL:</span> ${ttl}</div>
+                </div>
+              </div>
+              <div style="font-family: monospace; color: #8b949e; font-size: 0.75rem; background: #0d1117; padding: 8px; border-radius: 4px; letter-spacing: 1.5px; word-break: break-all;">
+                <strong style="color: #79c0ff; display: block; margin-bottom: 4px; font-size: 0.7rem;">PAYLOAD TLS (ENCRIPTADO — IGNORADO PELA I.A.):</strong>
+                ${payload}
+              </div>`;
+          } else {
+            // classification entry
+            let color = "#56d364";
+            if (item.predicted === "event_driven") color = "#ffa657";
+            if (item.predicted === "firmware") color = "#d2a8ff";
+
+            div.style.background = "rgba(255, 123, 114, 0.08)";
+            div.style.padding = "12px";
+            div.style.borderRadius = "6px";
+            div.style.marginTop = "12px";
+            div.style.marginBottom = "12px";
+            div.style.borderLeft = "3px solid #ff7b72";
+
+            div.innerHTML = `
+              <div style="color: #8b949e; font-size: 0.75rem;">[${timeStr}] 🧠 NFSTREAM & MACHINE LEARNING INFERÊNCIA</div>
+              <div style="margin-top: 4px; color: #ff7b72;">Dispositivo: <strong style="color: #fff;">${item.device_id}</strong></div>
+              <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+                <div style="border: 1px solid #ff7b72; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; color: #ff7b72; background: rgba(255,123,114,0.15);">
+                  <strong style="color: #fff;">FRAME.LEN_AVG:</strong> ${Math.round(item.avg_size || 0)}B
+                </div>
+                <div style="border: 1px solid #ff7b72; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; color: #ff7b72; background: rgba(255,123,114,0.15);">
+                  <strong style="color: #fff;">AVG_IAT:</strong> ${parseFloat(item.avg_iat || 0).toFixed(3)}s
+                </div>
+                <div style="border: 1px solid #ff7b72; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; color: #ff7b72; background: rgba(255,123,114,0.15);">
+                  <strong style="color: #fff;">PACKETS:</strong> ${item.num_packets || 0}
+                </div>
+              </div>
+              <div style="margin-top: 12px; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; background: #0d1117; padding: 8px; border-radius: 4px;">
+                <span style="color: #8b949e;">➔ Veredicto IA:</span>
+                <strong style="color: ${color}; text-transform: uppercase; font-size: 1.1rem; text-shadow: 0 0 8px ${color}80;">${item.predicted}</strong>
+                <span style="color: #8b949e; font-size: 0.8rem;">(${item.confidence}%)</span>
+              </div>`;
+          }
+
+          terminal.appendChild(div);
+        });
+
+        // Keep terminal from growing unbounded
+        while (terminal.childNodes.length > 80) {
+          terminal.removeChild(terminal.firstChild);
+        }
+        terminal.scrollTop = terminal.scrollHeight;
+
+      } catch(e) {
+        console.warn("Terminal feed error:", e);
+      }
+    }
+
+    // On first load, seed lastMaxTimestamp so we show recent items, not all history
+    async function initTerminal() {
+      try {
+        const res = await fetch("/api/terminal_feed");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.length) {
+          // Show last 5 items on load, then only new ones going forward
+          const sorted = data.slice().sort((a, b) => a.timestamp - b.timestamp);
+          const seed = sorted.slice(-5);
+          // Set lastMaxTimestamp to just before the seed so they render
+          lastMaxTimestamp = seed[0].timestamp - 0.001;
+          await refreshTerminal();
+        }
+      } catch(e) {}
+    }
+
+    initTerminal();
+    setInterval(refreshTerminal, 2000);
+
+    async function applyNetworkChange() {
+      const device = document.getElementById("sim-device").value;
+      const delay = document.getElementById("sim-delay").value;
+      const loss = document.getElementById("sim-loss").value;
+      const feedback = document.getElementById("sim-feedback");
+
+      feedback.innerText = "A reconfigurar interface eth0 no docker...";
+      feedback.style.color = "#8b949e";
+
+      try {
+        const res = await fetch("/api/network/degrade", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device, delay, loss })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          feedback.style.color = "#3fb950";
+          feedback.innerText = "✅ " + data.message;
+        } else {
+          feedback.style.color = "#f85149";
+          feedback.innerText = "❌ Erro: " + data.error;
+        }
+      } catch (err) {
+        feedback.style.color = "#f85149";
+        feedback.innerText = "❌ Falha na comunicação com o servidor.";
+      }
+    }
+
     // Auto-refresh da tabela a cada 5 segundos
     async function refreshTable() {
       try {
@@ -146,7 +385,6 @@
         const data = await res.json();
         const tbody = document.getElementById("classifications-table");
 
-        // Mantém o cabeçalho, substitui o resto
         const header = tbody.rows[0];
         tbody.innerHTML = "";
         tbody.appendChild(header);
@@ -165,7 +403,7 @@
           </tr>`;
           tbody.insertAdjacentHTML("beforeend", row);
         });
-      } catch(e) { /* silencioso se a BD ainda não existir */ }
+      } catch(e) {}
     }
 
     setInterval(refreshTable, 5000);

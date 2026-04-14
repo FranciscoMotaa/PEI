@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Análise de Robustez — IoT Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+    header {
+      background: linear-gradient(90deg, #161b22, #21262d);
+      border-bottom: 1px solid #30363d;
+      padding: 16px 32px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    header h1 { font-size: 1.2rem; }
+    nav a { color: #8b949e; text-decoration: none; font-size: 0.85rem; margin-left: 20px; }
+    nav a:hover { color: #fff; }
+    .main { padding: 24px 32px; }
+    h2 { margin-bottom: 14px; font-size: 1rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+    .card {
+      background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+      padding: 20px; margin-bottom: 28px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th { padding: 10px 14px; background: #21262d; font-size: 0.75rem; text-align: left; color: #8b949e; text-transform: uppercase; }
+    td { padding: 9px 14px; border-top: 1px solid #21262d; font-size: 0.85rem; }
+    tr:hover td { background: rgba(255,255,255,0.03); }
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; background: rgba(255,255,255,0.08); }
+    .telemetry   { color: #3fb950; }
+    .event_driven { color: #ffa657; }
+    .firmware    { color: #d2a8ff; }
+    .conf-bar-wrap { background: #21262d; border-radius: 4px; height: 8px; width: 120px; display: inline-block; vertical-align: middle; }
+    .conf-bar { height: 8px; border-radius: 4px; background: #3fb950; }
+    .btn {
+      display: inline-block; padding: 8px 16px; border-radius: 6px;
+      background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+      text-decoration: none; font-size: 0.85rem; cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #30363d; }
+    .btn-primary { background: #3fb950; border-color: #3fb950; color: #0d1117; font-weight: 600; }
+    .btn-primary:hover { background: #2ea043; }
+    canvas { max-width: 100%; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📊 Análise de Robustez</h1>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/robustness" style="color:#fff;">Robustez</a>
+      <a href="/logout">Sair</a>
+    </nav>
+  </header>
+
+  <div class="main">
+
+    <!-- Exportar dados -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <p style="color:#8b949e; font-size:0.85rem;">
+        Análise de como as condições de rede afetam a confiança de classificação.
+        Usa o simulador de rede no Dashboard principal para aplicar degradação e observar o impacto aqui.
+      </p>
+      <a href="/api/robustness/export" class="btn btn-primary">⬇ Exportar CSV</a>
+    </div>
+
+    <!-- Estatísticas por classe -->
+    <h2>Métricas por Classe de Tráfego</h2>
+    <div class="card">
+      <table>
+        <tr>
+          <th>Classe</th>
+          <th>Total Classificações</th>
+          <th>Confiança Média</th>
+          <th>Mín / Máx</th>
+          <th>IAT Médio (s)</th>
+          <th>Tamanho Médio (B)</th>
+        </tr>
+        {% for s in class_stats %}
+        <tr>
+          <td><span class="badge {{ s['predicted'] }}">{{ s['predicted'] }}</span></td>
+          <td>{{ s['total'] }}</td>
+          <td>
+            <span style="margin-right:8px;">{{ '%.1f' % s['avg_conf'] }}%</span>
+            <span class="conf-bar-wrap">
+              <span class="conf-bar" style="width:{{ s['avg_conf'] }}%; background:{% if s['avg_conf'] >= 80 %}#3fb950{% elif s['avg_conf'] >= 60 %}#ffa657{% else %}#f85149{% endif %};"></span>
+            </span>
+          </td>
+          <td>{{ '%.1f' % s['min_conf'] }}% / {{ '%.1f' % s['max_conf'] }}%</td>
+          <td>{{ '%.3f' % s['avg_iat'] }}</td>
+          <td>{{ '%.0f' % s['avg_size'] }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="color:#8b949e; text-align:center; padding:20px;">Sem dados ainda. Inicia o sistema e aguarda classificações.</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <!-- Gráficos -->
+    <div class="grid-2">
+      <div class="card">
+        <h2>Confiança ao Longo do Tempo</h2>
+        <canvas id="chartTimeline" height="220"></canvas>
+      </div>
+      <div class="card">
+        <h2>Distribuição de Confiança por Classe</h2>
+        <canvas id="chartConfDist" height="220"></canvas>
+      </div>
+    </div>
+
+    <!-- Tabela de timeline -->
+    <h2>Histórico de Confiança (janelas de 60s)</h2>
+    <div class="card" style="overflow-x:auto;">
+      <table id="timeline-table">
+        <tr>
+          <th>Janela Temporal</th>
+          <th>Dispositivo</th>
+          <th>Classe</th>
+          <th>Confiança Média</th>
+          <th>IAT Médio</th>
+          <th>Amostras</th>
+        </tr>
+        {% for r in timeline %}
+        <tr>
+          <td style="font-family:monospace; font-size:0.8rem;">{{ r['bucket'] | int }}</td>
+          <td>{{ r['device_id'] }}</td>
+          <td></td>
+          <td>
+            <span style="margin-right:6px;">{{ '%.1f' % r['avg_conf'] }}%</span>
+            <span class="conf-bar-wrap">
+              <span class="conf-bar" style="width:{{ r['avg_conf'] }}%; background:{% if r['avg_conf'] >= 80 %}#3fb950{% elif r['avg_conf'] >= 60 %}#ffa657{% else %}#f85149{% endif %};"></span>
+            </span>
+          </td>
+          <td>{{ '%.3f' % r['avg_iat'] if r['avg_iat'] else '—' }}</td>
+          <td>{{ r['n'] }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    const CLASS_COLORS = {
+      "telemetry":    "#3fb950",
+      "event_driven": "#ffa657",
+      "firmware":     "#d2a8ff",
+    };
+
+    async function loadCharts() {
+      const res  = await fetch("/api/robustness/timeline");
+      const data = await res.json();
+
+      if (!data.length) return;
+
+      // ── Timeline chart ──────────────────────────────────────────
+      const buckets = [...new Set(data.map(d => d.bucket))].sort();
+      const devices = [...new Set(data.map(d => d.device_id))];
+      const deviceColors = ["#3fb950", "#ffa657", "#d2a8ff"];
+
+      const timelineDatasets = devices.map((dev, i) => {
+        const points = buckets.map(b => {
+          const row = data.find(d => d.bucket === b && d.device_id === dev);
+          return row ? row.avg_conf : null;
+        });
+        return {
+          label: dev,
+          data: points,
+          borderColor: deviceColors[i],
+          backgroundColor: deviceColors[i] + "33",
+          tension: 0.3,
+          spanGaps: true,
+          pointRadius: 3,
+        };
+      });
+
+      new Chart(document.getElementById("chartTimeline"), {
+        type: "line",
+        data: {
+          labels: buckets.map(b => new Date(b * 1000).toLocaleTimeString("pt-PT")),
+          datasets: timelineDatasets,
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { labels: { color: "#8b949e" } },
+          },
+          scales: {
+            x: { ticks: { color: "#8b949e", maxTicksLimit: 8 }, grid: { color: "#21262d" } },
+            y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" }, min: 0, max: 100,
+                 title: { display: true, text: "Confiança (%)", color: "#8b949e" } },
+          },
+        },
+      });
+
+      // ── Confidence distribution (bar) ───────────────────────────
+      const classes = [...new Set(data.map(d => d.predicted).filter(Boolean))];
+      const confByClass = classes.map(cls => {
+        const rows = data.filter(d => d.predicted === cls);
+        return rows.length ? rows.reduce((s, r) => s + r.avg_conf, 0) / rows.length : 0;
+      });
+
+      new Chart(document.getElementById("chartConfDist"), {
+        type: "bar",
+        data: {
+          labels: classes,
+          datasets: [{
+            label: "Confiança Média (%)",
+            data: confByClass,
+            backgroundColor: classes.map(c => CLASS_COLORS[c] || "#8b949e"),
+            borderColor: "#30363d",
+            borderWidth: 1,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+            y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" }, min: 0, max: 100,
+                 title: { display: true, text: "Confiança (%)", color: "#8b949e" } },
+          },
+        },
+      });
+    }
+
+    loadCharts();
+    setInterval(loadCharts, 15000);
+  </script>
+</body>
+</html>
