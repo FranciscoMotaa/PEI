@@ -3,410 +3,847 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IoT Dashboard</title>
+  <title>IoT Traffic Monitor</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background: #0d1117;
-      color: #e6edf3;
-      min-height: 100vh;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0e17;
+      --surface:   #111827;
+      --surface2:  #0f172a;
+      --border:    #1e293b;
+      --border2:   #263044;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --muted2:    #94a3b8;
+      --blue:      #1a56db;
+      --green:     #22c55e;
+      --orange:    #f97316;
+      --purple:    #a78bfa;
+      --red:       #ef4444;
+      --yellow:    #eab308;
     }
+
+    body {
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
     header {
-      background: linear-gradient(90deg, #161b22, #21262d);
-      border-bottom: 1px solid #30363d;
-      padding: 16px 32px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-mark {
+      width: 28px;
+      height: 28px;
+      background: var(--blue);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-mark svg {
+      width: 16px; height: 16px;
+      fill: none; stroke: #fff;
+      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    .header-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    .header-subtitle {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-left: 4px;
+    }
+
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .nav-link {
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: var(--muted2);
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .nav-link:hover { background: var(--border); color: var(--text); }
+    .nav-link.active { background: var(--border); color: var(--text); font-weight: 500; }
+
+    .nav-sep {
+      width: 1px;
+      height: 16px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    /* ── Layout ── */
+    .page {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      overflow-y: auto;
+    }
+
+    .sidebar-section-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+    }
+
+    /* stat cards */
+    .stat-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .stat-card:last-child { margin-bottom: 0; }
+
+    .stat-label {
+      font-size: 0.78rem;
+      color: var(--muted2);
+    }
+
+    .stat-value {
+      font-size: 1.25rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 8px;
+      flex-shrink: 0;
+    }
+
+    .stat-left { display: flex; align-items: center; }
+
+    .c-telemetry   { color: var(--green);  }
+    .c-event_driven { color: var(--orange); }
+    .c-firmware    { color: var(--purple); }
+    .dot-telemetry   { background: var(--green);  }
+    .dot-event_driven { background: var(--orange); }
+    .dot-firmware    { background: var(--purple); }
+
+    /* device list */
+    .device-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.8rem;
+    }
+
+    .device-row:last-child { border-bottom: none; }
+
+    .device-ip {
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .device-conf {
+      font-size: 0.75rem;
+      color: var(--muted2);
+    }
+
+    /* network sim */
+    .sim-field {
+      margin-bottom: 14px;
+    }
+
+    .sim-field label {
       display: flex;
       justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--muted2);
+      margin-bottom: 6px;
+    }
+
+    .sim-field label span {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    select, input[type=range] {
+      width: 100%;
+      font-family: inherit;
+    }
+
+    select {
+      padding: 7px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.8rem;
+      outline: none;
+    }
+
+    input[type=range] {
+      accent-color: var(--blue);
+      cursor: pointer;
+    }
+
+    .btn-apply {
+      width: 100%;
+      padding: 8px;
+      background: var(--blue);
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.8rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-top: 4px;
+    }
+
+    .btn-apply:hover { background: #1d4ed8; }
+
+    .sim-feedback {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 8px;
+      min-height: 16px;
+    }
+
+    /* ── Main content ── */
+    .content {
+      padding: 24px 28px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 12px;
+    }
+
+    /* ── Terminal ── */
+    .terminal-wrap {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .terminal-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 14px;
+      display: flex;
       align-items: center;
+      gap: 6px;
     }
-    header h1 { font-size: 1.2rem; }
-    header a  { color: #8b949e; text-decoration: none; font-size: 0.85rem; }
-    header a:hover { color: #fff; }
 
-    .main { padding: 24px 32px; }
-
-    /* Cards de stats */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: 16px;
-      margin-bottom: 28px;
+    .term-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
     }
-    .stat-card {
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 12px;
-      padding: 18px;
-      text-align: center;
+
+    .term-dot-r { background: #ef4444; }
+    .term-dot-y { background: #eab308; }
+    .term-dot-g { background: #22c55e; }
+
+    .terminal-label {
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-left: 6px;
     }
-    .stat-card .label { font-size: 0.75rem; color: #8b949e; margin-bottom: 6px; text-transform: uppercase; }
-    .stat-card .value { font-size: 1.6rem; font-weight: 700; }
 
-    /* Cores por classe */
-    .normal     { color: #3fb950; }
-    .backdoor   { color: #f85149; }
-    .ddos       { color: #ff7b72; }
-    .dos        { color: #ffa657; }
-    .injection  { color: #d2a8ff; }
-    .mitm       { color: #79c0ff; }
-    .password   { color: #e3b341; }
-    .ransomware { color: #f85149; }
-    .scanning   { color: #56d364; }
-    .xss        { color: #bc8cff; }
+    #live-terminal {
+      height: 320px;
+      overflow-y: auto;
+      padding: 14px 16px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.8rem;
+      line-height: 1.7;
+      color: var(--green);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
 
-    /* Tabela */
-    h2 { margin-bottom: 14px; font-size: 1rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
-    table { width: 100%; border-collapse: collapse; background: #161b22; border-radius: 12px; overflow: hidden; border: 1px solid #30363d; }
-    th { padding: 12px 16px; background: #21262d; font-size: 0.75rem; text-align: left; color: #8b949e; text-transform: uppercase; }
-    td { padding: 10px 16px; border-top: 1px solid #21262d; font-size: 0.85rem; }
-    tr:hover td { background: rgba(255,255,255,0.03); }
+    #live-terminal::-webkit-scrollbar { width: 4px; }
+    #live-terminal::-webkit-scrollbar-track { background: transparent; }
+    #live-terminal::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .term-packet {
+      background: rgba(30, 41, 59, 0.6);
+      border-left: 2px solid var(--yellow);
+      border-radius: 4px;
+      padding: 8px 10px;
+      margin: 3px 0;
+    }
+
+    .term-packet-ts {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .term-headers {
+      background: rgba(34, 197, 94, 0.06);
+      border: 1px solid rgba(34, 197, 94, 0.15);
+      border-radius: 3px;
+      padding: 6px 8px;
+      margin-bottom: 5px;
+      font-size: 0.75rem;
+      color: #cbd5e1;
+    }
+
+    .term-headers-label {
+      font-size: 0.65rem;
+      color: var(--green);
+      font-weight: 600;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .term-payload {
+      background: rgba(15, 23, 42, 0.8);
+      border-radius: 3px;
+      padding: 6px 8px;
+      font-size: 0.7rem;
+      color: var(--muted);
+      word-break: break-all;
+      letter-spacing: 0.05em;
+    }
+
+    .term-payload-label {
+      font-size: 0.65rem;
+      color: #60a5fa;
+      font-weight: 600;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .term-classification {
+      background: rgba(30, 41, 59, 0.4);
+      border-left: 2px solid #60a5fa;
+      border-radius: 4px;
+      padding: 10px 12px;
+      margin: 6px 0;
+    }
+
+    .term-cls-ts {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .term-cls-features {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin: 6px 0;
+    }
+
+    .term-feat-tag {
+      background: rgba(96, 165, 250, 0.08);
+      border: 1px solid rgba(96, 165, 250, 0.2);
+      border-radius: 3px;
+      padding: 2px 7px;
+      font-size: 0.7rem;
+      color: #93c5fd;
+    }
+
+    .term-verdict {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 4px;
+      padding: 6px 10px;
+      font-size: 0.8rem;
+    }
+
+    .term-verdict-label { color: var(--muted); }
+
+    .term-verdict-class {
+      font-weight: 700;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .term-verdict-conf { color: var(--muted2); font-size: 0.75rem; }
+
+    /* ── Table ── */
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .table-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .table-header-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .table-refresh-note {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      padding: 10px 18px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      text-align: left;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 10px 18px;
+      font-size: 0.82rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted2);
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    td.td-ip {
+      font-family: 'Courier New', monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
 
     .badge {
       display: inline-block;
-      padding: 2px 10px;
-      border-radius: 20px;
-      font-size: 0.75rem;
+      padding: 2px 9px;
+      border-radius: 4px;
+      font-size: 0.72rem;
       font-weight: 600;
-      background: rgba(255,255,255,0.08);
+      letter-spacing: 0.02em;
     }
 
-    .refresh-info { color: #8b949e; font-size: 0.78rem; margin-bottom: 12px; }
+    .badge-telemetry    { background: rgba(34,197,94,0.1);  color: var(--green);  border: 1px solid rgba(34,197,94,0.2);  }
+    .badge-event_driven { background: rgba(249,115,22,0.1); color: var(--orange); border: 1px solid rgba(249,115,22,0.2); }
+    .badge-firmware     { background: rgba(167,139,250,0.1);color: var(--purple); border: 1px solid rgba(167,139,250,0.2);}
 
-    @keyframes pulse {
-      0% { opacity: 0.2; transform: translateX(-5px); }
-      50% { opacity: 1; transform: translateX(5px); }
-      100% { opacity: 0.2; transform: translateX(-5px); }
+    .conf-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
+
+    .conf-bar-bg {
+      flex: 1;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      max-width: 60px;
+    }
+
+    .conf-bar-fill {
+      height: 4px;
+      border-radius: 2px;
+      background: var(--blue);
+    }
+
+    .waiting-msg { color: var(--muted); }
   </style>
 </head>
 <body>
-  <header>
-    <h1>🛡️ IoT Traffic Dashboard</h1>
-    <nav style="display:flex; gap:16px; align-items:center;">
-      <a href="/" style="color:#fff; text-decoration:none; font-size:0.85rem;">Dashboard</a>
-      <a href="/robustness" style="color:#8b949e; text-decoration:none; font-size:0.85rem;">📊 Robustez</a>
-      <a href="/logout" style="color:#8b949e; text-decoration:none; font-size:0.85rem;">Sair</a>
-    </nav>
-  </header>
 
-  <div class="main">
-
-  <div class="main">
-
-    <!-- Simulador de Rede -->
-    <h2>Simulador de Rede</h2>
-    <div style="background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; margin-bottom: 28px; display: flex; flex-direction: column; gap: 20px;">
-      
-      <!-- Topologia Visual Simulada -->
-      <div style="display: flex; justify-content: space-around; align-items: center; padding: 20px; background: #0d1117; border-radius: 8px;">
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <div style="text-align: center;">
-            <div style="font-size: 1.5rem;">📡</div>
-            <div style="font-size: 0.70rem; color: #8b949e;">iot-device-1 (Telemetry)</div>
-          </div>
-          <div style="text-align: center;">
-            <div style="font-size: 1.5rem;">⚡</div>
-            <div style="font-size: 0.70rem; color: #8b949e;">iot-device-2 (Events)</div>
-          </div>
-          <div style="text-align: center;">
-            <div style="font-size: 1.5rem;">📦</div>
-            <div style="font-size: 0.70rem; color: #8b949e;">iot-device-3 (Firmware)</div>
-          </div>
-        </div>
-        <div style="font-size: 1.5rem; color: #3fb950; animation: pulse 1.5s infinite;">➡️➡️</div>
-        <div style="text-align: center;">
-          <div style="font-size: 2.5rem;">☁️</div>
-          <div style="font-size: 0.85rem; font-weight: bold; color: #e6edf3;">Mosquitto Broker</div>
-          <div style="font-size: 0.70rem; color: #8b949e;">(TLS 8883)</div>
-        </div>
-        <div style="font-size: 1.5rem; color: #79c0ff; animation: pulse 1.5s infinite; animation-delay: 0.75s;">➡️➡️</div>
-        <div style="text-align: center;">
-          <div style="font-size: 2.5rem;">🧠</div>
-          <div style="font-size: 0.85rem; font-weight: bold; color: #e6edf3;">AI Server (NFStream)</div>
-          <div style="font-size: 0.70rem; color: #8b949e;">Classificação Passiva</div>
-        </div>
-      </div>
-
-      <!-- Controles -->
-      <div style="display: flex; gap: 20px; align-items: flex-end;">
-        <div style="flex: 1;">
-          <label style="font-size: 0.8rem; color: #8b949e; display: block; margin-bottom: 8px;">Selecionar Dispositivo</label>
-          <select id="sim-device" style="width: 100%; padding: 8px; border-radius: 6px; background: #21262d; color: #fff; border: 1px solid #30363d; outline: none;">
-            <option value="iot-device-1">Device 1 (Telemetry) - 172.20.0.10</option>
-            <option value="iot-device-2">Device 2 (Event-Driven) - 172.20.0.11</option>
-            <option value="iot-device-3">Device 3 (Firmware) - 172.20.0.12</option>
-          </select>
-        </div>
-        <div style="flex: 1;">
-          <label style="font-size: 0.8rem; color: #8b949e; display: block; margin-bottom: 8px;">Latência Adicional: <span id="val-delay" style="color: #fff; font-weight: bold;">0</span> ms</label>
-          <input type="range" id="sim-delay" min="0" max="1000" step="10" value="0" style="width: 100%; cursor: ew-resize;" oninput="document.getElementById('val-delay').innerText = this.value">
-        </div>
-        <div style="flex: 1;">
-          <label style="font-size: 0.8rem; color: #8b949e; display: block; margin-bottom: 8px;">Perda de Pacotes: <span id="val-loss" style="color: #fff; font-weight: bold;">0</span> %</label>
-          <input type="range" id="sim-loss" min="0" max="50" step="1" value="0" style="width: 100%; cursor: ew-resize;" oninput="document.getElementById('val-loss').innerText = this.value">
-        </div>
-        <div>
-          <button onclick="applyNetworkChange()" style="padding: 10px 16px; background: #3fb950; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: background 0.2s;">⚠️ Aplicar Regra</button>
-        </div>
-      </div>
-      <div id="sim-feedback" style="font-size: 0.85rem; color: #56d364; text-align: right; min-height: 20px;"></div>
+<header>
+  <div class="header-left">
+    <div class="logo-mark">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+        <path d="M2 17l10 5 10-5"/>
+        <path d="M2 12l10 5 10-5"/>
+      </svg>
     </div>
+    <span class="header-title">IoT Traffic Monitor</span>
+    <span class="header-subtitle">— classificação passiva em tempo real</span>
+  </div>
+  <nav class="header-nav">
+    <a href="/" class="nav-link active">Dashboard</a>
+    <a href="/robustness" class="nav-link">Robustez</a>
+    <div class="nav-sep"></div>
+    <a href="/logout" class="nav-link">Sair</a>
+  </nav>
+</header>
 
-    <!-- Terminal Live Matrix -->
-    <h2>Terminal Live (AI & Encriptação)</h2>
-    <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 12px; margin-bottom: 28px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
-      <div style="background: #161b22; padding: 8px 16px; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 8px;">
-        <div style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f56;"></div>
-        <div style="width: 12px; height: 12px; border-radius: 50%; background: #ffbd2e;"></div>
-        <div style="width: 12px; height: 12px; border-radius: 50%; background: #27c93f;"></div>
-        <span style="color: #8b949e; font-size: 0.8rem; margin-left: 8px; font-family: monospace;">iot-traffic-monitoring-cli</span>
-      </div>
-      <div id="live-terminal" style="height: 300px; overflow-y: auto; padding: 16px; font-family: 'Courier New', Courier, monospace; font-size: 0.85rem; line-height: 1.6; color: #56d364; display: flex; flex-direction: column;">
-        <div class="waiting-msg" style="color: #8b949e; margin-bottom: 8px;">> A aguardar tráfego na interface eth0...</div>
-      </div>
-    </div>
+<div class="page">
 
-    <!-- Cards de distribuição de classes -->
-    <div class="stats-grid">
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+
+    <!-- Contagens por classe -->
+    <div>
+      <div class="sidebar-section-title">Classificações totais</div>
       {% for s in stats %}
       <div class="stat-card">
-        <div class="label">{{ s['predicted'] }}</div>
-        <div class="value {{ s['predicted'] }}">{{ s['count'] }}</div>
+        <div class="stat-left">
+          <div class="stat-dot dot-{{ s['predicted'] }}"></div>
+          <span class="stat-label">{{ s['predicted'] }}</span>
+        </div>
+        <span class="stat-value c-{{ s['predicted'] }}">{{ s['count'] }}</span>
       </div>
       {% endfor %}
     </div>
 
     <!-- Dispositivos -->
-    <h2>Dispositivos</h2>
-    <table style="margin-bottom: 28px;">
-      <tr>
-        <th>Device ID</th>
-        <th>Classificações</th>
-        <th>Confiança Média</th>
-      </tr>
+    <div>
+      <div class="sidebar-section-title">Dispositivos</div>
       {% for d in devices %}
-      <tr>
-        <td>{{ d['device_id'] }}</td>
-        <td>{{ d['count'] }}</td>
-        <td>{{ '%.1f' % d['avg_conf'] }}%</td>
-      </tr>
+      <div class="device-row">
+        <div>
+          <div style="font-size:0.8rem; color: var(--text); margin-bottom:2px;">{{ d['device_id'] }}</div>
+          <div class="device-ip">{{ d['device_id'] }}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:0.8rem; color:var(--text);">{{ d['count'] }}</div>
+          <div class="device-conf">{{ '%.0f' % d['avg_conf'] }}% conf.</div>
+        </div>
+      </div>
       {% endfor %}
-    </table>
+    </div>
+
+    <!-- Simulador de rede -->
+    <div>
+      <div class="sidebar-section-title">Simulador de rede</div>
+
+      <div class="sim-field">
+        <label>Dispositivo</label>
+        <select id="sim-device">
+          <option value="iot-device-1">Device 1 — Telemetry (172.20.0.10)</option>
+          <option value="iot-device-2">Device 2 — Event-Driven (172.20.0.11)</option>
+          <option value="iot-device-3">Device 3 — Firmware (172.20.0.12)</option>
+        </select>
+      </div>
+
+      <div class="sim-field">
+        <label>
+          Latência adicional
+          <span id="val-delay">0</span> ms
+        </label>
+        <input type="range" id="sim-delay" min="0" max="1000" step="10" value="0"
+               oninput="document.getElementById('val-delay').innerText = this.value">
+      </div>
+
+      <div class="sim-field">
+        <label>
+          Perda de pacotes
+          <span id="val-loss">0</span> %
+        </label>
+        <input type="range" id="sim-loss" min="0" max="50" step="1" value="0"
+               oninput="document.getElementById('val-loss').innerText = this.value">
+      </div>
+
+      <button class="btn-apply" onclick="applyNetworkChange()">Aplicar condições</button>
+      <div class="sim-feedback" id="sim-feedback"></div>
+    </div>
+
+  </aside>
+
+  <!-- ── Main content ── -->
+  <main class="content">
+
+    <!-- Terminal -->
+    <div>
+      <div class="section-title">Captura em tempo real</div>
+      <div class="terminal-wrap">
+        <div class="terminal-bar">
+          <div class="term-dot term-dot-r"></div>
+          <div class="term-dot term-dot-y"></div>
+          <div class="term-dot term-dot-g"></div>
+          <span class="terminal-label">eth0 — tcp port 8883 — NFStream active_timeout=10s</span>
+        </div>
+        <div id="live-terminal">
+          <div class="waiting-msg">> A aguardar tráfego na interface eth0...</div>
+        </div>
+      </div>
+    </div>
 
     <!-- Tabela de classificações recentes -->
-    <h2>Classificações Recentes</h2>
-    <p class="refresh-info">🔄 Atualiza automaticamente a cada 5 segundos</p>
-    <table id="classifications-table">
-      <tr>
-        <th>Timestamp</th>
-        <th>Dispositivo</th>
-        <th>Classe</th>
-        <th>Confiança</th>
-        <th>Pacotes</th>
-        <th>Avg Size</th>
-        <th>Avg IAT</th>
-        <th>Total Bytes</th>
-      </tr>
-      {% for r in rows %}
-      <tr>
-        <td>{{ '%0.0f' % r['timestamp'] | int }}</td>
-        <td>{{ r['device_id'] }}</td>
-        <td><span class="badge {{ r['predicted'] }}">{{ r['predicted'] }}</span></td>
-        <td>{{ r['confidence'] }}%</td>
-        <td>{{ r['num_packets'] }}</td>
-        <td>{{ '%.0f' % r['avg_size'] }}B</td>
-        <td>{{ '%.2f' % r['avg_iat'] }}s</td>
-        <td>{{ r['total_bytes'] }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  </div>
-
-  <script>
-    // Track last rendered item IDs to avoid duplicates without blocking new data
-    let lastMaxTimestamp = 0;
-    let terminalItems = []; // rolling buffer of rendered items
-
-    async function refreshTerminal() {
-      try {
-        const res = await fetch("/api/terminal_feed");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!data || !data.length) return;
-
-        const terminal = document.getElementById("live-terminal");
-
-        // Find items newer than what we last showed
-        const newItems = data.filter(item => item.timestamp > lastMaxTimestamp);
-        if (!newItems.length) return;
-
-        // Remove the "waiting" placeholder on first real data
-        const placeholder = terminal.querySelector(".waiting-msg");
-        if (placeholder) placeholder.remove();
-
-        newItems.forEach(item => {
-          if (item.timestamp > lastMaxTimestamp) lastMaxTimestamp = item.timestamp;
-
-          const timeStr = new Date(item.timestamp * 1000).toLocaleTimeString("pt-PT");
-          const div = document.createElement("div");
-          div.style.marginBottom = "4px";
-
-          if (item.type === "packet") {
-            const payload = item.payload_hex || '17 03 03 00 2b 45 42 a7';
-            const src_p = item.src_port || '---';
-            const dst_p = item.dst_port || '---';
-            const ttl = item.ttl || '--';
-
-            div.style.background = "#161b22";
-            div.style.padding = "10px";
-            div.style.borderRadius = "6px";
-            div.style.marginTop = "4px";
-            div.style.borderLeft = "3px solid #e3b341";
-
-            div.innerHTML = `
-              <div style="color: #8b949e; font-size: 0.75rem; margin-bottom: 6px;">[${timeStr}] 📡 RAW SOCKET (CAMADA 3 E 4)</div>
-              <div style="background: rgba(46, 160, 67, 0.1); border: 1px solid rgba(46, 160, 67, 0.4); padding: 8px; border-radius: 4px; margin-bottom: 8px;">
-                <strong style="color: #3fb950; font-size: 0.75rem; display: block; margin-bottom: 4px;">CABEÇALHOS (NÃO ENCRIPTADOS):</strong>
-                <div style="display: flex; gap: 12px; font-size: 0.8rem; color: #c9d1d9; font-family: monospace;">
-                  <div><span style="color: #8b949e;">Origem:</span> [${item.src_ip}]:${src_p}</div>
-                  <div style="color: #8b949e;">➔</div>
-                  <div><span style="color: #8b949e;">Destino:</span> [Broker]:${dst_p}</div>
-                  <div style="margin-left: 10px;"><strong style="color: #e3b341;">LEN: ${item.size} Bytes</strong></div>
-                  <div><span style="color: #8b949e;">TTL:</span> ${ttl}</div>
+    <div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <span class="table-header-title">Classificações recentes</span>
+          <span class="table-refresh-note">actualiza a cada 5s</span>
+        </div>
+        <table id="classifications-table">
+          <thead>
+            <tr>
+              <th>Hora</th>
+              <th>Dispositivo</th>
+              <th>Classe</th>
+              <th>Confiança</th>
+              <th>Pacotes</th>
+              <th>Avg Size</th>
+              <th>Avg IAT</th>
+              <th>Total Bytes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td>{{ r['timestamp'] | int }}</td>
+              <td class="td-ip">{{ r['device_id'] }}</td>
+              <td><span class="badge badge-{{ r['predicted'] }}">{{ r['predicted'] }}</span></td>
+              <td>
+                <div class="conf-bar-wrap">
+                  <span>{{ r['confidence'] }}%</span>
+                  <div class="conf-bar-bg">
+                    <div class="conf-bar-fill" style="width:{{ r['confidence'] }}%"></div>
+                  </div>
                 </div>
-              </div>
-              <div style="font-family: monospace; color: #8b949e; font-size: 0.75rem; background: #0d1117; padding: 8px; border-radius: 4px; letter-spacing: 1.5px; word-break: break-all;">
-                <strong style="color: #79c0ff; display: block; margin-bottom: 4px; font-size: 0.7rem;">PAYLOAD TLS (ENCRIPTADO — IGNORADO PELA I.A.):</strong>
-                ${payload}
-              </div>`;
-          } else {
-            // classification entry
-            let color = "#56d364";
-            if (item.predicted === "event_driven") color = "#ffa657";
-            if (item.predicted === "firmware") color = "#d2a8ff";
+              </td>
+              <td>{{ r['num_packets'] }}</td>
+              <td>{{ '%.0f' % r['avg_size'] }} B</td>
+              <td>{{ '%.2f' % r['avg_iat'] }} s</td>
+              <td>{{ r['total_bytes'] }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
 
-            div.style.background = "rgba(255, 123, 114, 0.08)";
-            div.style.padding = "12px";
-            div.style.borderRadius = "6px";
-            div.style.marginTop = "12px";
-            div.style.marginBottom = "12px";
-            div.style.borderLeft = "3px solid #ff7b72";
+  </main>
+</div>
 
-            div.innerHTML = `
-              <div style="color: #8b949e; font-size: 0.75rem;">[${timeStr}] 🧠 NFSTREAM & MACHINE LEARNING INFERÊNCIA</div>
-              <div style="margin-top: 4px; color: #ff7b72;">Dispositivo: <strong style="color: #fff;">${item.device_id}</strong></div>
-              <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
-                <div style="border: 1px solid #ff7b72; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; color: #ff7b72; background: rgba(255,123,114,0.15);">
-                  <strong style="color: #fff;">FRAME.LEN_AVG:</strong> ${Math.round(item.avg_size || 0)}B
-                </div>
-                <div style="border: 1px solid #ff7b72; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; color: #ff7b72; background: rgba(255,123,114,0.15);">
-                  <strong style="color: #fff;">AVG_IAT:</strong> ${parseFloat(item.avg_iat || 0).toFixed(3)}s
-                </div>
-                <div style="border: 1px solid #ff7b72; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; color: #ff7b72; background: rgba(255,123,114,0.15);">
-                  <strong style="color: #fff;">PACKETS:</strong> ${item.num_packets || 0}
-                </div>
-              </div>
-              <div style="margin-top: 12px; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; background: #0d1117; padding: 8px; border-radius: 4px;">
-                <span style="color: #8b949e;">➔ Veredicto IA:</span>
-                <strong style="color: ${color}; text-transform: uppercase; font-size: 1.1rem; text-shadow: 0 0 8px ${color}80;">${item.predicted}</strong>
-                <span style="color: #8b949e; font-size: 0.8rem;">(${item.confidence}%)</span>
-              </div>`;
-          }
+<script>
+  let lastMaxTimestamp = 0;
 
-          terminal.appendChild(div);
-        });
+  const CLASS_COLORS = {
+    telemetry:    "var(--green)",
+    event_driven: "var(--orange)",
+    firmware:     "var(--purple)",
+  };
 
-        // Keep terminal from growing unbounded
-        while (terminal.childNodes.length > 80) {
-          terminal.removeChild(terminal.firstChild);
-        }
-        terminal.scrollTop = terminal.scrollHeight;
+  async function refreshTerminal() {
+    try {
+      const res = await fetch("/api/terminal_feed");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data || !data.length) return;
 
-      } catch(e) {
-        console.warn("Terminal feed error:", e);
-      }
-    }
+      const terminal = document.getElementById("live-terminal");
+      const newItems = data.filter(item => item.timestamp > lastMaxTimestamp);
+      if (!newItems.length) return;
 
-    // On first load, seed lastMaxTimestamp so we show recent items, not all history
-    async function initTerminal() {
-      try {
-        const res = await fetch("/api/terminal_feed");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data && data.length) {
-          // Show last 5 items on load, then only new ones going forward
-          const sorted = data.slice().sort((a, b) => a.timestamp - b.timestamp);
-          const seed = sorted.slice(-5);
-          // Set lastMaxTimestamp to just before the seed so they render
-          lastMaxTimestamp = seed[0].timestamp - 0.001;
-          await refreshTerminal();
-        }
-      } catch(e) {}
-    }
+      const placeholder = terminal.querySelector(".waiting-msg");
+      if (placeholder) placeholder.remove();
 
-    initTerminal();
-    setInterval(refreshTerminal, 2000);
+      newItems.forEach(item => {
+        if (item.timestamp > lastMaxTimestamp) lastMaxTimestamp = item.timestamp;
+        const timeStr = new Date(item.timestamp * 1000).toLocaleTimeString("pt-PT");
+        const div = document.createElement("div");
 
-    async function applyNetworkChange() {
-      const device = document.getElementById("sim-device").value;
-      const delay = document.getElementById("sim-delay").value;
-      const loss = document.getElementById("sim-loss").value;
-      const feedback = document.getElementById("sim-feedback");
+        if (item.type === "packet") {
+          const payload = item.payload_hex || "17 03 03 00 2b ...";
+          const sp = item.src_port || "—";
+          const dp = item.dst_port || "—";
+          const ttl = item.ttl || "—";
 
-      feedback.innerText = "A reconfigurar interface eth0 no docker...";
-      feedback.style.color = "#8b949e";
-
-      try {
-        const res = await fetch("/api/network/degrade", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device, delay, loss })
-        });
-        const data = await res.json();
-
-        if (data.success) {
-          feedback.style.color = "#3fb950";
-          feedback.innerText = "✅ " + data.message;
+          div.className = "term-packet";
+          div.innerHTML = `
+            <div class="term-packet-ts">[${timeStr}] raw socket — camada de rede/transporte</div>
+            <div class="term-headers">
+              <div class="term-headers-label">Cabeçalhos visíveis (não encriptados)</div>
+              <span style="color:#94a3b8">src</span> ${item.src_ip}:${sp}
+              &nbsp;→&nbsp;
+              <span style="color:#94a3b8">dst</span> broker:${dp}
+              &nbsp;&nbsp;
+              <span style="color:#e2e8f0;font-weight:600">${item.size} B</span>
+              &nbsp;&nbsp;
+              <span style="color:#94a3b8">TTL</span> ${ttl}
+            </div>
+            <div class="term-payload">
+              <div class="term-payload-label">Payload TLS — encriptado, ignorado pelo classificador</div>
+              ${payload}
+            </div>`;
         } else {
-          feedback.style.color = "#f85149";
-          feedback.innerText = "❌ Erro: " + data.error;
+          const color = CLASS_COLORS[item.predicted] || "var(--text)";
+          div.className = "term-classification";
+          div.innerHTML = `
+            <div class="term-cls-ts">[${timeStr}] NFStream — janela de 10s concluída — inferência Random Forest</div>
+            <div class="term-cls-features">
+              <span class="term-feat-tag">pkts: ${item.num_packets || 0}</span>
+              <span class="term-feat-tag">avg_size: ${Math.round(item.avg_size || 0)} B</span>
+              <span class="term-feat-tag">avg_iat: ${parseFloat(item.avg_iat || 0).toFixed(3)} s</span>
+              <span class="term-feat-tag">src: ${item.device_id}</span>
+            </div>
+            <div class="term-verdict">
+              <span class="term-verdict-label">resultado →</span>
+              <span class="term-verdict-class" style="color:${color}">${item.predicted}</span>
+              <span class="term-verdict-conf">${item.confidence}% confiança</span>
+            </div>`;
         }
-      } catch (err) {
-        feedback.style.color = "#f85149";
-        feedback.innerText = "❌ Falha na comunicação com o servidor.";
+
+        terminal.appendChild(div);
+      });
+
+      while (terminal.childNodes.length > 60) terminal.removeChild(terminal.firstChild);
+      terminal.scrollTop = terminal.scrollHeight;
+    } catch(e) {}
+  }
+
+  async function initTerminal() {
+    try {
+      const res = await fetch("/api/terminal_feed");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.length) {
+        const sorted = data.slice().sort((a, b) => a.timestamp - b.timestamp);
+        const seed = sorted.slice(-5);
+        lastMaxTimestamp = seed[0].timestamp - 0.001;
+        await refreshTerminal();
       }
-    }
+    } catch(e) {}
+  }
 
-    // Auto-refresh da tabela a cada 5 segundos
-    async function refreshTable() {
-      try {
-        const res = await fetch("/api/latest");
-        const data = await res.json();
-        const tbody = document.getElementById("classifications-table");
-
-        const header = tbody.rows[0];
-        tbody.innerHTML = "";
-        tbody.appendChild(header);
-
-        data.forEach(r => {
-          const ts = new Date(r.timestamp * 1000).toLocaleTimeString("pt-PT");
-          const row = `<tr>
+  async function refreshTable() {
+    try {
+      const res = await fetch("/api/latest");
+      const data = await res.json();
+      const tbody = document.querySelector("#classifications-table tbody");
+      if (!tbody) return;
+      tbody.innerHTML = "";
+      data.forEach(r => {
+        const ts = new Date(r.timestamp * 1000).toLocaleTimeString("pt-PT");
+        const conf = r.confidence || 0;
+        tbody.insertAdjacentHTML("beforeend", `
+          <tr>
             <td>${ts}</td>
-            <td>${r.device_id}</td>
-            <td><span class="badge ${r.predicted}">${r.predicted}</span></td>
-            <td>${r.confidence}%</td>
+            <td class="td-ip">${r.device_id}</td>
+            <td><span class="badge badge-${r.predicted}">${r.predicted}</span></td>
+            <td>
+              <div class="conf-bar-wrap">
+                <span>${conf}%</span>
+                <div class="conf-bar-bg">
+                  <div class="conf-bar-fill" style="width:${conf}%"></div>
+                </div>
+              </div>
+            </td>
             <td>${r.num_packets}</td>
-            <td>${Math.round(r.avg_size)}B</td>
-            <td>${r.avg_iat.toFixed(2)}s</td>
+            <td>${Math.round(r.avg_size)} B</td>
+            <td>${r.avg_iat.toFixed(2)} s</td>
             <td>${r.total_bytes}</td>
-          </tr>`;
-          tbody.insertAdjacentHTML("beforeend", row);
-        });
-      } catch(e) {}
-    }
+          </tr>`);
+      });
+    } catch(e) {}
+  }
 
-    setInterval(refreshTable, 5000);
-  </script>
+  async function applyNetworkChange() {
+    const device   = document.getElementById("sim-device").value;
+    const delay    = document.getElementById("sim-delay").value;
+    const loss     = document.getElementById("sim-loss").value;
+    const feedback = document.getElementById("sim-feedback");
+
+    feedback.style.color = "var(--muted)";
+    feedback.innerText = "A aplicar regra tc netem...";
+
+    try {
+      const res  = await fetch("/api/network/degrade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device, delay, loss })
+      });
+      const data = await res.json();
+      if (data.success) {
+        feedback.style.color = "var(--green)";
+        feedback.innerText = data.message;
+      } else {
+        feedback.style.color = "var(--red)";
+        feedback.innerText = "Erro: " + data.error;
+      }
+    } catch(e) {
+      feedback.style.color = "var(--red)";
+      feedback.innerText = "Falha na comunicação com o servidor.";
+    }
+  }
+
+  initTerminal();
+  setInterval(refreshTerminal, 2000);
+  setInterval(refreshTable, 5000);
+</script>
 </body>
 </html>

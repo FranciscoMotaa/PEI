@@ -23,7 +23,7 @@ from sklearn.model_selection import train_test_split
 DEFAULT_CSV   = os.getenv("BINARY_DATASET_PATH", "/app/data/Binary -2DSCombined.csv")
 DEFAULT_MODEL = os.getenv("BINARY_MODEL_PATH",   "/app/data/binary_model.joblib")
 
-FEATURES  = ["num_packets", "avg_size", "std_size", "avg_iat", "total_bytes"]
+FEATURES  = ["num_packets", "avg_size", "std_size", "avg_iat", "std_iat", "total_bytes"]
 LABEL_COL = "label"
 
 # o dataset binario usa nomes de colunas diferentes, este mapa faz a conversao
@@ -68,6 +68,15 @@ def load_data(path):
         else:
             df["avg_iat"] = 0.0
             print("aviso: avg_iat nao disponivel, a usar 0")
+
+    # std_iat - desvio padrao do IAT, util para distinguir trafego regular de irregular
+    if "std_iat" not in df.columns:
+        if col_iat and col_iat.replace("mean", "std") in df.columns:
+            df["std_iat"] = df[col_iat.replace("mean", "std")]
+        elif "avg_iat" in df.columns:
+            df["std_iat"] = df["avg_iat"] * 0.3  # aproximacao
+        else:
+            df["std_iat"] = 0.0
 
     df = df[FEATURES + [LABEL_COL]].dropna()
     df = df[np.isfinite(df[FEATURES]).all(axis=1)]

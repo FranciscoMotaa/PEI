@@ -180,11 +180,21 @@ def run(clf, clf_bin=None):
         if src_ip not in IP_CLASS_MAP or dst_ip != BROKER_IP:
             continue
 
+        # com poucos pacotes as estatisticas sao muito ruidosas - nao vale a pena classificar
+        # este limiar foi determinado empiricamente: abaixo de 3 pkts o modelo erra muito
+        if flow.bidirectional_packets < 3:
+            print(f"[AI] {src_ip} -> ignorado (apenas {flow.bidirectional_packets} pacotes na janela)")
+            continue
+
+        # std_iat ajuda muito quando ha perda de pacotes - captura a irregularidade do timing
+        std_iat = flow.bidirectional_stddev_piat_ms / 1000.0 if flow.bidirectional_stddev_piat_ms else 0.0
+
         features = {
             "num_packets": flow.bidirectional_packets,
             "avg_size":    flow.bidirectional_mean_ps,
             "std_size":    flow.bidirectional_stddev_ps,
             "avg_iat":     flow.bidirectional_mean_piat_ms / 1000.0,
+            "std_iat":     std_iat,
             "total_bytes": flow.bidirectional_bytes,
         }
 
@@ -193,6 +203,7 @@ def run(clf, clf_bin=None):
             features["avg_size"],
             features["std_size"],
             features["avg_iat"],
+            features["std_iat"],
             features["total_bytes"],
         ]]
 
@@ -204,7 +215,8 @@ def run(clf, clf_bin=None):
 
         print(f"[AI] {src_ip} -> {predicted} ({confidence}%) | enc={enc_label} | "
               f"pkts={features['num_packets']} avg_size={features['avg_size']:.0f}B "
-              f"iat={features['avg_iat']:.3f}s bytes={features['total_bytes']}")
+              f"iat={features['avg_iat']:.3f}s std_iat={features['std_iat']:.3f}s "
+              f"bytes={features['total_bytes']}")
 
         save_classification(src_ip, predicted, confidence, features)
 

@@ -22,7 +22,7 @@ from sklearn.model_selection import train_test_split
 DEFAULT_CSV   = os.getenv("DATASET_PATH", "/app/data/self_generated.csv")
 DEFAULT_MODEL = os.getenv("MODEL_PATH",   "/app/data/model.joblib")
 
-FEATURES = ["num_packets", "avg_size", "std_size", "avg_iat", "total_bytes"]
+FEATURES = ["num_packets", "avg_size", "std_size", "avg_iat", "std_iat", "total_bytes"]
 LABEL    = "traffic_class"
 LABEL_TONIOT = "type"  # nome da coluna no dataset externo TON_IoT
 
@@ -45,6 +45,8 @@ def load_data(path):
         # std_size nao existe diretamente, aproximamos com o coeficiente de variacao
         cv = df["src_bytes"].std() / (df["src_bytes"].mean() + 1e-9)
         df["std_size"] = df["avg_size"] * cv
+        # std_iat tambem nao existe, aproximamos como fracao do avg_iat
+        df["std_iat"] = df["avg_iat"] * 0.3
     else:
         print("ERRO: coluna de label nao encontrada no CSV")
         sys.exit(1)

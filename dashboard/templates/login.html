@@ -3,70 +3,203 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IoT Dashboard — Login</title>
+  <title>IoT Traffic Monitor — Acesso</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: 'Segoe UI', sans-serif;
-      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      background: #0a0e17;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
+      color: #e2e8f0;
     }
-    .card {
-      background: rgba(255,255,255,0.08);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 16px;
-      padding: 40px;
-      width: 360px;
-      text-align: center;
-      color: #fff;
-    }
-    .card h1 { font-size: 1.6rem; margin-bottom: 6px; }
-    .card p  { font-size: 0.85rem; color: #aaa; margin-bottom: 28px; }
-    input[type=password] {
+
+    .login-wrap {
       width: 100%;
-      padding: 12px 16px;
-      border-radius: 8px;
-      border: 1px solid rgba(255,255,255,0.2);
-      background: rgba(255,255,255,0.1);
-      color: #fff;
-      font-size: 1rem;
-      margin-bottom: 16px;
-      outline: none;
+      max-width: 400px;
+      padding: 24px;
     }
-    input[type=password]::placeholder { color: #888; }
-    button {
-      width: 100%;
-      padding: 12px;
+
+    .login-header {
+      margin-bottom: 32px;
+    }
+
+    .login-header .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: #1a56db;
       border-radius: 8px;
-      border: none;
-      background: linear-gradient(90deg, #667eea, #764ba2);
-      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon svg {
+      width: 20px;
+      height: 20px;
+      fill: none;
+      stroke: #fff;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .logo-text {
       font-size: 1rem;
       font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.2s;
+      color: #f1f5f9;
+      letter-spacing: -0.01em;
     }
-    button:hover { opacity: 0.85; }
-    .error { color: #ff6b6b; margin-top: 12px; font-size: 0.9rem; }
-    .icon { font-size: 2.5rem; margin-bottom: 16px; }
+
+    .logo-sub {
+      font-size: 0.7rem;
+      color: #64748b;
+      font-weight: 400;
+      display: block;
+      margin-top: 1px;
+    }
+
+    .login-header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+
+    .login-header p {
+      font-size: 0.875rem;
+      color: #64748b;
+      line-height: 1.5;
+    }
+
+    .login-card {
+      background: #111827;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 28px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #94a3b8;
+      margin-bottom: 8px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    input[type=password] {
+      width: 100%;
+      padding: 10px 14px;
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type=password]:focus {
+      border-color: #1a56db;
+    }
+
+    input[type=password]::placeholder {
+      color: #334155;
+    }
+
+    .btn-login {
+      width: 100%;
+      padding: 11px;
+      background: #1a56db;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+      letter-spacing: 0.01em;
+    }
+
+    .btn-login:hover {
+      background: #1d4ed8;
+    }
+
+    .error-msg {
+      margin-top: 14px;
+      padding: 10px 14px;
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: 6px;
+      color: #f87171;
+      font-size: 0.85rem;
+    }
+
+    .login-footer {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #334155;
+    }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="icon">🔒</div>
-    <h1>IoT Dashboard</h1>
-    <p>Classificação de Tráfego em Tempo Real</p>
-    <form method="post">
-      <input type="password" name="password" placeholder="Password de administrador" autofocus>
-      <button type="submit">Entrar</button>
-    </form>
-    {% if error %}
-    <p class="error">{{ error }}</p>
-    {% endif %}
+  <div class="login-wrap">
+    <div class="login-header">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div>
+          <span class="logo-text">IoT Traffic Monitor</span>
+          <span class="logo-sub">University of Minho — P06</span>
+        </div>
+      </div>
+      <h1>Bem-vindo</h1>
+      <p>Sistema de classificação passiva de tráfego IoT encriptado.</p>
+    </div>
+
+    <div class="login-card">
+      <form method="post">
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password"
+                 placeholder="••••••••" autofocus autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn-login">Entrar no sistema</button>
+      </form>
+
+      {% if error %}
+      <div class="error-msg">{{ error }}</div>
+      {% endif %}
+    </div>
+
+    <div class="login-footer">
+      Eduardo Queirós · Francisco Mota · Tiago Campos
+    </div>
   </div>
 </body>
 </html>
