@@ -24,6 +24,50 @@ app.secret_key = os.getenv("SECRET_KEY", "supersecretkey123")
 DB_PATH       = "/app/data/iot_traffic.db"
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "iot2025")
 
+IMAGE_MAP = {
+    "telemetry":    "pei-iot-device-1",
+    "event_driven": "pei-iot-device-2",
+    "firmware":     "pei-iot-device-3"
+}
+
+def get_host_path(container_name, target_dest):
+    """Descobre o caminho no host para um volume bind-mounted."""
+    try:
+        container = docker_client.containers.get(container_name)
+        for m in container.attrs.get("Mounts", []):
+            if m["Destination"] == target_dest:
+                return m["Source"]
+    except:
+        pass
+    return None
+
+def cleanup_orphans():
+    """Remove contentores dinâmicos que ficaram de sessões anteriores."""
+    if not docker_client: return
+    try:
+        # 1. Limpar por label (mais seguro)
+        containers = docker_client.containers.list(all=True, filters={"label": "pei-dynamic=true"})
+        for c in containers:
+            print(f"LIMPANDO (label): Removendo {c.name}")
+            try: c.remove(force=True)
+            except: pass
+            
+        # 2. Limpar por padrão de nome (para garantir que só ficam 1, 2 e 3)
+        all_c = docker_client.containers.list(all=True)
+        for c in all_c:
+            if c.name.startswith("iot-device-"):
+                try:
+                    num = int(c.name.split("-")[-1])
+                    if num > 3:
+                        print(f"LIMPANDO (nome): Removendo {c.name}")
+                        c.remove(force=True)
+                except: pass
+    except Exception as e:
+        print(f"Erro na limpeza: {e}")
+
+# Executar limpeza ao iniciar o dashboard
+cleanup_orphans()
+
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -79,15 +123,66 @@ def index():
     """).fetchall()
 
     # Contagem por dispositivo
-    devices = conn.execute("""
-        SELECT device_id, COUNT(*) as count,
-               AVG(confidence) as avg_conf
-        FROM classifications
-        GROUP BY device_id
+    # Obter estatísticas da DB
+    stats_rows = conn.execute("""
+        SELECT device_id, COUNT(*) as count, AVG(confidence) as avg_conf
+        FROM classifications GROUP BY device_id
     """).fetchall()
+    stats_map = {r['device_id']: r for r in stats_rows}
 
     conn.close()
-    return render_template("index.html", rows=rows, stats=stats, devices=devices)
+    
+    # Descobrir dispositivos reais no Docker
+    all_devices = []
+    running_device_names = []
+    if docker_client:
+        try:
+            for c in docker_client.containers.list():
+                if c.name.startswith("iot-device-"):
+                    name = c.name
+                    running_device_names.append(name)
+                    
+                    # Obter IP (o classificador usa o IP como device_id na DB)
+                    ip = "—"
+                    try:
+                        networks = c.attrs['NetworkSettings']['Networks']
+                        if "pei_iot-net" in networks:
+                            ip = networks["pei_iot-net"]["IPAddress"]
+                    except: pass
+                    
+                    # Tentar obter o ID amigável do ambiente ou do nome
+                    env_id = None
+                    try:
+                        for env in c.attrs['Config']['Env']:
+                            if env.startswith("DEVICE_ID="):
+                                env_id = env.split("=")[1]
+                    except: pass
+                    friendly_id = env_id or name.replace("iot-", "").replace("-", "")
+                    
+                    # Na DB o device_id é o IP
+                    d_stats = stats_map.get(ip, {"count": 0, "avg_conf": 0})
+                    
+                    all_devices.append({
+                        "id": friendly_id,
+                        "name": name,
+                        "ip": ip,
+                        "count": d_stats["count"],
+                        "avg_conf": d_stats["avg_conf"]
+                    })
+        except:
+            pass
+            
+    # Ordenar por número do dispositivo (device1, device2...)
+    def get_device_num(d):
+        try: return int(''.join(filter(str.isdigit, d['id'])))
+        except: return 999
+    all_devices.sort(key=get_device_num)
+
+    return render_template("index.html", 
+                         rows=rows, 
+                         stats=stats, 
+                         devices=all_devices, 
+                         running_devices=running_device_names)
 
 
 # ── API JSON para auto-refresh ─────────────────────────────
@@ -205,6 +300,107 @@ def api_network_degrade():
         return jsonify({"success": False, "error": str(e)})
 
 
+@app.route("/api/devices/add", methods=["POST"])
+@login_required
+def api_devices_add():
+    if not docker_client:
+        return jsonify({"success": False, "error": "Docker socket indisponível"})
+
+    data = request.json
+    dtype = data.get("type")
+    if dtype not in IMAGE_MAP:
+        return jsonify({"success": False, "error": "Tipo de dispositivo inválido"})
+
+    try:
+        # Descobrir caminhos no host
+        host_data_path = get_host_path("iot-dashboard", "/app/data")
+        print(f"DEBUG: host_data_path detectado: {host_data_path}")
+
+        if host_data_path:
+            # Se o host for Windows, o dirname do Linux pode falhar com backslashes
+            if "\\" in host_data_path:
+                host_root = "\\".join(host_data_path.split("\\")[:-1])
+                host_certs_path = host_root + "\\certs"
+            else:
+                host_root = os.path.dirname(host_data_path)
+                host_certs_path = os.path.join(host_root, "certs")
+            
+            print(f"DEBUG: host_certs_path derivado: {host_certs_path}")
+        else:
+            return jsonify({"success": False, "error": "Não foi possível determinar o caminho do host"})
+
+        # Encontrar um ID e IP livre
+        containers = docker_client.containers.list(all=True)
+        existing_ids = []
+        existing_ips = []
+        for c in containers:
+            if c.name.startswith("iot-device-"):
+                try:
+                    num = int(c.name.split("-")[-1])
+                    existing_ids.append(num)
+                except: pass
+                
+                # Tentar ler o IP da rede
+                networks = c.attrs.get("NetworkSettings", {}).get("Networks", {})
+                if "pei_iot-net" in networks:
+                    ip = networks["pei_iot-net"].get("IPAddress")
+                    if ip:
+                        try:
+                            last_octet = int(ip.split(".")[-1])
+                            existing_ips.append(last_octet)
+                        except: pass
+
+        next_id = 1
+        while next_id in existing_ids: next_id += 1
+        
+        # Atribuir IP baseado no ID para ser sequencial (10, 11, 12, 13...)
+        next_ip_octet = 9 + next_id
+        
+        device_id = f"device{next_id}"
+        container_name = f"iot-device-{next_id}"
+        ip_address = f"172.20.0.{next_ip_octet}"
+
+        # Criar e arrancar o container
+        docker_client.containers.run(
+            image=IMAGE_MAP[dtype],
+            name=container_name,
+            detach=True,
+            auto_remove=True, # Desaparece ao parar
+            network="pei_iot-net",
+            cap_add=["NET_ADMIN"],
+            labels={
+                "com.docker.compose.project": "pei",
+                "com.docker.compose.service": "dynamic-device",
+                "pei-dynamic": "true"
+            },
+            environment={
+                "PYTHONUNBUFFERED": "1",
+                "BROKER_HOST": "broker",
+                "BROKER_PORT": "8883",
+                "DEVICE_ID": device_id,
+                "DEVICE_TYPE": dtype
+            },
+            volumes={
+                host_certs_path: {"bind": "/app/certs", "mode": "ro"},
+                host_data_path: {"bind": "/app/data", "mode": "rw"}
+            },
+            networking_config={
+                "pei_iot-net": docker.types.EndpointConfig(
+                    docker_client.api._version,
+                    ipv4_address=ip_address
+                )
+            }
+        )
+
+        return jsonify({
+            "success": True, 
+            "message": f"Dispositivo {device_id} adicionado com sucesso (IP: {ip_address})"
+        })
+    except Exception as e:
+        print("Erro ao adicionar dispositivo:", e)
+        return jsonify({"success": False, "error": str(e)})
+
+
 # ── Página de Análise de Robustez ─────────────────────────────
 @app.route("/robustness")
 @login_required
@@ -287,4 +483,5 @@ def api_robustness_export():
 
 
 if __name__ == "__main__":
+    cleanup_orphans()
     app.run(host="0.0.0.0", port=8080, debug=False)

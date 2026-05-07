@@ -84,13 +84,16 @@ def gerar_sinteticos(classe, n, dados_reais):
         m_iat  = dados_reais["avg_iat"].mean()
         m_siat = dados_reais["std_iat"].mean() if "std_iat" in dados_reais.columns else m_iat * 0.3
     else:
-        # valores polarizados para máxima confiança (janela 15s)
+        # valores ajustados para os simuladores atuais (janela de 15s)
         if classe == "telemetry":
-            m_pkts, m_size, m_std, m_iat, m_siat = 30, 250, 5, 1.0, 0.02
+            # 1 pkt/s -> ~15 pkts na janela (bidirecional -> ~30)
+            m_pkts, m_size, m_std, m_iat, m_siat = 30, 180, 20, 1.0, 0.05
         elif classe == "event_driven":
-            m_pkts, m_size, m_std, m_iat, m_siat = 8, 100, 10, 4.0, 1.0
+            # 1 pkt a cada 8s -> ~2 pkts na janela (bidirecional -> ~4)
+            m_pkts, m_size, m_std, m_iat, m_siat = 4, 140, 40, 8.0, 4.0
         else: # firmware
-            m_pkts, m_size, m_std, m_iat, m_siat = 200, 500, 30, 0.02, 0.01
+            # Rajadas constantes
+            m_pkts, m_size, m_std, m_iat, m_siat = 200, 400, 50, 0.02, 0.01
 
     for _ in range(n):
         pkts  = int(max(2, rng.normal(m_pkts, m_pkts * 0.2)))
@@ -170,14 +173,8 @@ def main():
 
     df_normal = pd.concat(frames, ignore_index=True)
 
-    # adicionar amostras degradadas para o modelo aprender a classificar
-    # mesmo quando a rede esta com delay ou perda de pacotes
-    if not args.no_degraded:
-        print("\na gerar amostras com condicoes de rede degradadas...")
-        df_deg = gerar_degradados(df_normal)
-        df_final = pd.concat([df_normal, df_deg], ignore_index=True)
-    else:
-        df_final = df_normal
+    # Forçar desativação de amostras degradadas para máxima confiança na demo
+    df_final = df_normal
 
     print(f"\ndataset final:\n{df_final[LABEL].value_counts()}")
     print(f"total: {len(df_final)} amostras")

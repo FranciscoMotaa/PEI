@@ -161,6 +161,7 @@ def load_model(path, label):
 
 
 def run(clf, clf_bin=None):
+    print(">>> CAPTURE LOOP START")
     print("[NFStream] a iniciar captura em eth0 (porta 8883)...")
 
     # active_timeout=10s significa que a cada 10s temos uma amostra por dispositivo
@@ -169,15 +170,15 @@ def run(clf, clf_bin=None):
         source="eth0",
         bpf_filter="tcp port 8883",
         statistical_analysis=True,
-        active_timeout=10
+        active_timeout=15
     )
 
     for flow in streamer:
         src_ip = flow.src_ip
         dst_ip = flow.dst_ip
-
-        # so nos interessa trafego dos dispositivos para o broker
-        if src_ip not in IP_CLASS_MAP or dst_ip != BROKER_IP:
+        
+        # Ignorar tráfego do próprio broker ou de fora da rede IoT
+        if src_ip == BROKER_IP or not src_ip.startswith("172.20.0."):
             continue
 
         # com poucos pacotes as estatisticas sao muito ruidosas - nao vale a pena classificar

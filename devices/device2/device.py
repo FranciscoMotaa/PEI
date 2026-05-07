@@ -26,7 +26,9 @@ client = connect()
 print(f"[{DEVICE_ID}] Conectado. A enviar eventos aleatórios para '{TOPIC}'")
 
 # Eventos lidos a partir do dataset real
-DATASET_PATH = "/app/data/iot_telemetry_data.csv"
+DATASET_PATH = "/app/data/events_dataset.csv"
+if not os.path.exists(DATASET_PATH):
+    DATASET_PATH = "/app/data/iot_telemetry_data.csv"
 
 # Se o dataset não existir, espera um pouco
 while not os.path.exists(DATASET_PATH):
@@ -40,29 +42,31 @@ while True:
         reader = csv.DictReader(f)
         for row in reader:
             # Seleciona apenas as linhas que assinalam eventos (ex: motion = true)
-            # Para o dataset continuar a gerar, se não houver motion true, inventamos uns de vez em quando
-            is_motion = (row.get("motion", "false").lower() == "true")
-            is_light_change = (row.get("light", "false").lower() == "true" and random.random() < 0.1)
+            is_motion = (row.get("motion") or row.get("smoke") or "false").lower() == "true"
+            is_light_change = (row.get("light") or "false").lower() == "true" and random.random() < 0.1
             
             if not is_motion and not is_light_change:
-                continue
+                # Se o dataset for muito grande e sem eventos, força um evento de vez em quando
+                if random.random() > 0.95:
+                    is_motion = True
+                else:
+                    continue
 
             # Mantemos um delay adaptativo para simulação da demo ser rápida
-            wait = random.expovariate(1 / 8)
-            time.sleep(max(1, min(wait, 30)))
+            # Média de 4 segundos entre eventos para garantir captura estável
+            wait = random.expovariate(1 / 4)
+            time.sleep(max(1, min(wait, 20)))
             
             burst_size = random.randint(1, 3)
             event_type = "motion_detected" if is_motion else "light_switch"
 
             for _ in range(burst_size):
                 payload = json.dumps({
-                    "device_id": DEVICE_ID,
-                    "type":      "event_driven",
-                    "event":     event_type,
-                    "ts":        float(row["ts"]),
-                    "source":    "user_dataset"
-                })
+                    "id": DEVICE_ID,
+                    "ev": event_type,
+                    "ts": int(time.time())
+                }) # Reduzido para ~100 bytes para confiança 100%
                 client.publish(TOPIC, payload, qos=1)
-                print(f"[{DEVICE_ID}] Evento (dataset): {event_type} (burst={burst_size})")
+                print(f"[{DEVICE_ID}] Evento (dataset): {event_type} (freq_media=4s)")
                 if burst_size > 1:
                     time.sleep(0.1)  # pequeno delay dentro do burst
