@@ -60,9 +60,16 @@ def init_db():
             conn.execute(f"ALTER TABLE raw_packets ADD COLUMN {col}")
         except sqlite3.OperationalError:
             pass
+
+    # limpar dados da sessao anterior para comecar sempre do zero
+    conn.execute("DELETE FROM classifications")
+    conn.execute("DELETE FROM raw_packets")
+    conn.execute("DELETE FROM sqlite_sequence WHERE name='classifications'")
+    conn.execute("DELETE FROM sqlite_sequence WHERE name='raw_packets'")
+
     conn.commit()
     conn.close()
-    print("[DB] ok")
+    print("[DB] ok — dados anteriores apagados, sessao nova")
 
 
 def save_classification(device_ip, predicted, confidence, features):

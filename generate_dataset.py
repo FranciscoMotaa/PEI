@@ -112,6 +112,10 @@ def gerar_degradados(df_normal):
     Efeitos simulados:
     - perda de pacotes: reduz num_packets e total_bytes, aumenta avg_iat e std_iat
     - delay: aumenta avg_iat e std_iat mas mantem num_packets e total_bytes
+    - combinado (delay alto + perda alta): simula o cenario mais dificil onde
+      o TCP retransmite pacotes perdidos e eles chegam em burst com os novos,
+      fazendo o num_packets subir e o avg_iat descer — o cenario que confunde
+      telemetry com event_driven
     """
     rng = np.random.default_rng(seed=99)
     rows = []
@@ -119,25 +123,44 @@ def gerar_degradados(df_normal):
     for _, row in df_normal.iterrows():
         classe = row[LABEL]
 
-        # simular perda de pacotes (5% a 25%)
-        for loss in [0.05, 0.10, 0.20, 0.25]:
+        # simular perda de pacotes (5% a 35%)
+        for loss in [0.05, 0.10, 0.20, 0.25, 0.32, 0.35]:
             fator = 1.0 - loss
             pkts  = max(3, int(row["num_packets"] * fator * rng.uniform(0.9, 1.1)))
             total = int(row["total_bytes"] * fator * rng.uniform(0.9, 1.1))
-            # perda de pacotes aumenta o IAT medio (ha mais gaps)
             iat   = row["avg_iat"] / fator * rng.uniform(0.95, 1.05)
-            # e aumenta a variancia do IAT (os gaps ficam irregulares)
             siat  = row["std_iat"] * (1.0 + loss * 2) * rng.uniform(0.9, 1.1)
             rows.append([pkts, row["avg_size"], row["std_size"], iat, siat, total, classe])
 
-        # simular delay adicional (50ms a 500ms)
-        for delay_s in [0.05, 0.1, 0.2, 0.5]:
+        # simular delay adicional (50ms a 700ms)
+        for delay_s in [0.05, 0.1, 0.2, 0.5, 0.63, 0.7]:
             iat  = row["avg_iat"] + delay_s * rng.uniform(0.8, 1.2)
             siat = row["std_iat"] + delay_s * 0.3 * rng.uniform(0.8, 1.2)
             rows.append([
                 row["num_packets"], row["avg_size"], row["std_size"],
                 iat, siat, row["total_bytes"], classe
             ])
+
+        # simular TCP retransmit burst: delay alto + perda alta combinados
+        # quando ha perda + delay, o TCP acumula retransmissoes e envia em burst
+        # resultado: num_packets SOBE (retransmissoes chegam juntas com novos pacotes)
+        #            avg_iat DESCE (burst comprime os gaps)
+        #            avg_size mantem-se (os pacotes sao os mesmos, so chegam juntos)
+        # este e o cenario que confundia telemetry com event_driven
+        for loss, delay_s in [(0.20, 0.2), (0.25, 0.4), (0.32, 0.63), (0.35, 0.5), (0.30, 0.7)]:
+            # burst factor: pacotes perdidos chegam juntos com os seguintes
+            burst_factor = 1.0 + loss * rng.uniform(0.8, 1.5)
+            pkts_burst = int(row["num_packets"] * burst_factor * rng.uniform(0.9, 1.1))
+            pkts_burst = max(3, pkts_burst)
+            # IAT comprimido pelo burst (pacotes chegam mais juntos)
+            iat_burst = row["avg_iat"] * (1.0 - loss * 0.5) * rng.uniform(0.8, 1.1)
+            iat_burst = max(0.05, iat_burst)
+            # std_iat alto porque o burst e irregular
+            siat_burst = row["std_iat"] * (1.0 + delay_s) * rng.uniform(1.0, 1.5)
+            # total_bytes aproximado (alguns pacotes perdidos, outros retransmitidos)
+            total_burst = int(pkts_burst * row["avg_size"] * rng.uniform(0.9, 1.0))
+            rows.append([pkts_burst, row["avg_size"], row["std_size"],
+                         iat_burst, siat_burst, total_burst, classe])
 
     df_deg = pd.DataFrame(rows, columns=FEATURES + [LABEL])
     print(f"amostras degradadas geradas: {len(df_deg)}")
