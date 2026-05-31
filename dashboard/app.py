@@ -129,9 +129,16 @@ def api_terminal_feed():
             raw_rows = conn.execute("SELECT timestamp, src_ip, dst_ip, size, payload_hex, src_port, dst_port, ttl FROM raw_packets ORDER BY id DESC LIMIT 40").fetchall()
         except sqlite3.OperationalError:
             # Fallback se a alter table falhou
-            raw_rows = conn.execute("SELECT timestamp, src_ip, dst_ip, size FROM raw_packets ORDER BY id DESC LIMIT 40").fetchall()
+            try:
+                raw_rows = conn.execute("SELECT timestamp, src_ip, dst_ip, size FROM raw_packets ORDER BY id DESC LIMIT 40").fetchall()
+            except sqlite3.OperationalError:
+                # Se a tabela nem existir, ignora
+                raw_rows = []
             
-        cls_rows = conn.execute("SELECT timestamp, device_id, predicted, confidence, avg_size, avg_iat, num_packets FROM classifications ORDER BY id DESC LIMIT 20").fetchall()
+        try:
+            cls_rows = conn.execute("SELECT timestamp, device_id, predicted, confidence, avg_size, avg_iat, num_packets FROM classifications ORDER BY id DESC LIMIT 20").fetchall()
+        except sqlite3.OperationalError:
+            cls_rows = []
         conn.close()
         
         feed = []
@@ -166,7 +173,18 @@ def api_terminal_feed():
         return jsonify(feed)
     except Exception as e:
         print("Erro em terminal_feed:", e)
-        return jsonify([])
+        import traceback
+        return jsonify([{
+            "type": "packet",
+            "timestamp": 9999999999,
+            "src_ip": "ERRO",
+            "dst_ip": "INTERNO",
+            "size": 0,
+            "payload_hex": f"ERROR: {str(e)} | Trace: {traceback.format_exc()}",
+            "src_port": "ERR",
+            "dst_port": "ERR",
+            "ttl": "ERR"
+        }])
 
 
 # ── API JSON para Controlo de Rede ─────────────────────────────
@@ -200,6 +218,113 @@ def api_network_degrade():
         return jsonify({
             "success": True, 
             "message": f"Degradação ({delay}ms, {loss}%) aplicada a {device}"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/api/network/add_device", methods=["POST"])
+@login_required
+def api_network_add_device():
+    if not docker_client:
+        return jsonify({"success": False, "error": "Docker socket indisponível"})
+    
+    data = request.json
+    device_type = data.get("type", "telemetry")
+    
+    map_types = {
+        "telemetry": "iot-device-1",
+        "event_driven": "iot-device-2",
+        "firmware": "iot-device-3"
+    }
+    base_name = map_types.get(device_type, "iot-device-1")
+    
+    try:
+        base_container = docker_client.containers.get(base_name)
+        network_name = list(base_container.attrs['NetworkSettings']['Networks'].keys())[0]
+        network = docker_client.networks.get(network_name)
+        
+        # Encontrar prefixo de IP da rede
+        try:
+            subnet = network.attrs['IPAM']['Config'][0]['Subnet']
+            ip_prefix = subnet.rsplit('.', 1)[0]
+        except:
+            ip_prefix = "172.20.0"
+
+        max_num = 3
+        max_ip_suffix = 12
+        
+        # Descobrir o ultimo ID e IP em uso
+        for c in docker_client.containers.list(all=True):
+            if c.name.startswith("iot-device-"):
+                try:
+                    num = int(c.name.split("-")[-1])
+                    if num > max_num:
+                        max_num = num
+                except:
+                    pass
+            
+            net_settings = c.attrs['NetworkSettings']['Networks']
+            if network_name in net_settings:
+                ip = net_settings[network_name].get('IPAddress', '')
+                if ip.startswith(ip_prefix + "."):
+                    try:
+                        suffix = int(ip.split(".")[-1])
+                        if suffix > max_ip_suffix:
+                            max_ip_suffix = suffix
+                    except:
+                        pass
+                        
+        next_num = max_num + 1
+        next_ip_suffix = max_ip_suffix + 1
+        
+        device_id = f"device{next_num}"
+        container_name = f"iot-device-{next_num}"
+        next_ip = f"{ip_prefix}.{next_ip_suffix}"
+        
+        binds = base_container.attrs['HostConfig'].get('Binds', [])
+        
+        env = [
+            "PYTHONUNBUFFERED=1",
+            "BROKER_HOST=broker",
+            "BROKER_PORT=8883",
+            f"DEVICE_ID={device_id}",
+            f"DEVICE_TYPE={device_type}"
+        ]
+        
+        # Herdar as labels do projeto para que o `docker compose down` as consiga apagar
+        project_label = base_container.labels.get("com.docker.compose.project", "trabalho")
+        container_labels = {
+            "com.docker.compose.project": project_label,
+            "dynamic_device": "true"
+        }
+        
+        # Criar o contentor (sem ligar à rede automaticamente)
+        container = docker_client.containers.create(
+            image=base_container.image.id,
+            name=container_name,
+            environment=env,
+            volumes=binds,
+            cap_add=["NET_ADMIN"],
+            labels=container_labels
+        )
+        
+        # Ligar explicitamente à rede com o IP sequencial desejado
+        network.connect(container, ipv4_address=next_ip)
+        container.start()
+        
+        # Formatar display name para a UI
+        type_display = "Telemetry"
+        if device_type == "event_driven": type_display = "Event-Driven"
+        if device_type == "firmware": type_display = "Firmware"
+        display_name = f"Device {next_num} — {type_display} ({next_ip})"
+        
+        return jsonify({
+            "success": True, 
+            "message": f"Iniciado {container_name} no IP {next_ip}",
+            "container_name": container_name,
+            "device_id": device_id,
+            "display_name": display_name
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
@@ -287,4 +412,16 @@ def api_robustness_export():
 
 
 if __name__ == "__main__":
+    # ── Limpeza Automática ────────────────────────────────────
+    # Apagar dispositivos dinâmicos criados em sessões anteriores
+    if docker_client:
+        try:
+            print("A limpar dispositivos dinâmicos antigos...")
+            for c in docker_client.containers.list(all=True):
+                if c.name.startswith("iot-device-") and c.name not in ["iot-device-1", "iot-device-2", "iot-device-3"]:
+                    print(f"A remover {c.name}...")
+                    c.remove(force=True)
+        except Exception as e:
+            print("Erro ao limpar dispositivos antigos:", e)
+            
     app.run(host="0.0.0.0", port=8080, debug=False)

@@ -618,6 +618,19 @@
 
       <button class="btn-apply" onclick="applyNetworkChange()">Aplicar condições</button>
       <div class="sim-feedback" id="sim-feedback"></div>
+      
+      <!-- ── Novo Dispositivo ── -->
+      <div class="section-title" style="margin-top: 24px;">Adicionar Dispositivo</div>
+      <div class="sim-field">
+        <label>Tipo de Tráfego</label>
+        <select id="new-device-type">
+          <option value="telemetry">Telemetry</option>
+          <option value="event_driven">Event-Driven</option>
+          <option value="firmware">Firmware</option>
+        </select>
+      </div>
+      <button class="btn-apply" onclick="addDevice()" style="background: var(--green);">Adicionar à Rede</button>
+      <div class="sim-feedback" id="add-feedback"></div>
     </div>
 
   </aside>
@@ -838,6 +851,40 @@
     } catch(e) {
       feedback.style.color = "var(--red)";
       feedback.innerText = "Falha na comunicação com o servidor.";
+    }
+  }
+
+  async function addDevice() {
+    const type = document.getElementById("new-device-type").value;
+    const feedback = document.getElementById("add-feedback");
+    
+    feedback.style.color = "var(--muted)";
+    feedback.innerText = "A iniciar contentor na rede...";
+    
+    try {
+      const res = await fetch("/api/network/add_device", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type })
+      });
+      const data = await res.json();
+      if (data.success) {
+        feedback.style.color = "var(--green)";
+        feedback.innerText = data.message;
+        
+        // Adicionar o novo dispositivo na dropdown de Degradação de Rede
+        const sel = document.getElementById("sim-device");
+        const opt = document.createElement("option");
+        opt.value = data.container_name;
+        opt.innerText = data.display_name;
+        sel.appendChild(opt);
+      } else {
+        feedback.style.color = "var(--red)";
+        feedback.innerText = "Erro: " + data.error;
+      }
+    } catch(e) {
+      feedback.style.color = "var(--red)";
+      feedback.innerText = "Falha na comunicação.";
     }
   }
 

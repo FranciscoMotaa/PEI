@@ -184,7 +184,8 @@ def run(clf, clf_bin=None):
         dst_ip = flow.dst_ip
 
         # so nos interessa trafego dos dispositivos para o broker
-        if src_ip not in IP_CLASS_MAP or dst_ip != BROKER_IP:
+        # (Filtro IP_CLASS_MAP removido para aceitar dispositivos desconhecidos)
+        if dst_ip != BROKER_IP:
             continue
 
         # com poucos pacotes as estatisticas sao muito ruidosas - nao vale a pena classificar
